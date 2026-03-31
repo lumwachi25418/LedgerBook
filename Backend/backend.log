@@ -1,0 +1,109 @@
+nohup: ignoring input
+
+> backend@1.0.0 start
+> node server.js
+
+[dotenv@17.3.1] injecting env (4) from .env -- tip: 🛠️  run anywhere with `dotenvx run -- yourcommand`
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🛡️ auth for agents: https://vestauth.com
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+Server listening on http://localhost:3000
+Error
+    at Database.<anonymous> (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:185:27)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:50
+    at new Promise (<anonymous>)
+    at Query.run (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:12)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/sequelize.js:315:28
+    at async SQLiteQueryInterface.insert (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:2490:35)
+    at async Ledger.create (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:1362:12)
+    at async /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/server.js:86:18
+Error
+    at Database.<anonymous> (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:185:27)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:50
+    at new Promise (<anonymous>)
+    at Query.run (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:12)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/sequelize.js:315:28
+    at async SQLiteQueryInterface.insert (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:2490:35)
+    at async Ledger.create (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:1362:12)
+    at async /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/server.js:86:18
+Error
+    at Database.<anonymous> (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:185:27)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:50
+    at new Promise (<anonymous>)
+    at Query.run (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:12)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/sequelize.js:315:28
+    at async SQLiteQueryInterface.insert (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:2490:35)
+    at async Ledger.create (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:1362:12)
+    at async /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/server.js:86:18
+Error
+    at Database.<anonymous> (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:185:27)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:50
+    at new Promise (<anonymous>)
+    at Query.run (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:12)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/sequelize.js:315:28
+    at async SQLiteQueryInterface.insert (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:2490:35)
+    at async Ledger.create (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:1362:12)
+    at async /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/server.js:86:18
+Error
+    at Database.<anonymous> (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:185:27)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:50
+    at new Promise (<anonymous>)
+    at Query.run (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:12)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/sequelize.js:315:28
+    at async SQLiteQueryInterface.insert (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:2490:35)
+    at async Ledger.create (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:1362:12)
+    at async /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/server.js:86:18
+Error
+    at Database.<anonymous> (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:185:27)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:50
+    at new Promise (<anonymous>)
+    at Query.run (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:12)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/sequelize.js:315:28
+    at async SQLiteQueryInterface.insert (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:2490:35)
+    at async Ledger.create (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:1362:12)
+    at async /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/server.js:86:18
+Error
+    at Database.<anonymous> (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:185:27)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:50
+    at new Promise (<anonymous>)
+    at Query.run (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:12)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/sequelize.js:315:28
+    at async SQLiteQueryInterface.insert (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:2490:35)
+    at async Ledger.create (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:1362:12)
+    at async /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/server.js:86:18
+Error
+    at Database.<anonymous> (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:185:27)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:50
+    at new Promise (<anonymous>)
+    at Query.run (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:12)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/sequelize.js:315:28
+    at async SQLiteQueryInterface.insert (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:2490:35)
+    at async Ledger.create (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:1362:12)
+    at async /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/server.js:86:18
+Error
+    at Database.<anonymous> (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:185:27)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:50
+    at new Promise (<anonymous>)
+    at Query.run (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:12)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/sequelize.js:315:28
+    at async SQLiteQueryInterface.insert (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:2490:35)
+    at async Ledger.create (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:1362:12)
+    at async /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/server.js:86:18
+Error
+    at Database.<anonymous> (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:185:27)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:50
+    at new Promise (<anonymous>)
+    at Query.run (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/sqlite/query.js:183:12)
+    at /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/sequelize.js:315:28
+    at async SQLiteQueryInterface.insert (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/dialects/abstract/query-interface.js:308:21)
+    at async model.save (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:2490:35)
+    at async Ledger.create (/home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/node_modules/sequelize/lib/model.js:1362:12)
+    at async /home/emmanuel-lumwachi/Desktop/Ledgerbook/Backend/server.js:86:18
