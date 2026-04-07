@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 function Register({ onRegister }) {
   const [email, setEmail] = useState('');
+  const [Organisation, setOrganisation] = useState(''); 
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -37,7 +38,7 @@ function Register({ onRegister }) {
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), password: password.trim() }),
+        body: JSON.stringify({ email: email.trim(), organisation: Organisation.trim(), password: password.trim() }),
       });
 
       const payload = await response.json();
@@ -96,6 +97,18 @@ function Register({ onRegister }) {
               required
             />
           </div>
+           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Organisation</label>
+            <input
+              type="text"
+              value={Organisation || ""}    
+              onChange={(e) => setOrganisation(e.target.value)} 
+              placeholder="Enter your organisation"
+              className="w-full p-3 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-amber-500"
+              required
+            />
+          </div>
+
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>

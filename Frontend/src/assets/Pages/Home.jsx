@@ -177,85 +177,82 @@ export default function LedgerApp() {
       };
     }).filter((entry) => entry.amount > 0);
   };
+const saveToBackend = async () => {
+  if (!activeLedger?.id) return;
 
-  const saveToBackend = async () => {
-    if (!activeLedger?.id) return;
-    const entries = gatherTransactions();
-    if (entries.length === 0) return;
+  const entries = gatherTransactions();
+  if (entries.length === 0) return;
 
-    setBackendStatus({ loading: true, error: '' });
+  setBackendStatus({ loading: true, error: '' });
 
-    try {
-      for (const tx of entries) {
-        await createTransaction(activeLedger.id, tx);
-      }
-    } catch (err) {
-      setBackendStatus({ loading: false, error: err.message });
-      return;
+  try {
+    for (const tx of entries) {
+      await createTransaction(activeLedger.id, tx);
     }
 
-    setBackendStatus({ loading: false, error: '' });
-  };
+    // 🔥 IMPORTANT: reload data
+    await initializeLedger(selectedDate);
+
+  } catch (err) {
+    setBackendStatus({ loading: false, error: err.message });
+    return;
+  }
+
+  setBackendStatus({ loading: false, error: '' });
+};
 
   // PDF EXPORT
-  const exportPDF = () => {
-    const doc = new jsPDF();
+ const exportPDF = async () => {
+  const doc = new jsPDF();
 
-    doc.setFontSize(16);
-    doc.text("Church Ledger Report", 14, 10);
+  doc.setFontSize(16);
+  doc.text("Church Ledger Report", 14, 10);
+  doc.text(`Date: ${selectedDate}`, 14, 16);
 
-    doc.setFontSize(10);
-    doc.text(`Date: ${selectedDate}`, 14, 16);
+  let y = 20;
 
-    let y = 20;
+  categories.forEach(cat => {
+    const rows = [];
 
-    categories.forEach(cat => {
-      const rows = [];
-
-      (categoryData[cat]?.cash || []).forEach(row => {
-        const total = calculateRowTotal(row);
-        if (total > 0) rows.push([row.type, formatKES(total)]);
-      });
-
-      Object.entries(categoryData[cat]?.mpesa || {}).forEach(([type, val]) => {
-        if (val > 0) rows.push([`M-PESA ${type}`, formatKES(val)]);
-      });
-
-      Object.entries(categoryData[cat]?.cheque || {}).forEach(([type, val]) => {
-        if (val > 0) rows.push([`CHEQUE ${type}`, formatKES(val)]);
-      });
-
-      autoTable(doc, {
-        startY: y,
-        head: [[cat, "Amount"]],
-        body: rows.length ? rows : [["", ""]],
-        theme: "grid"
-      });
-
-      y = doc.lastAutoTable.finalY + 5;
+    (categoryData[cat]?.cash || []).forEach(row => {
+      const total = calculateRowTotal(row);
+      if (total > 0) rows.push([row.type, formatKES(total)]);
     });
 
-    doc.text(`Grand Total: ${formatKES(grandTotal)}`, 14, y + 5);
+    autoTable(doc, {
+      startY: y,
+      head: [[cat, "Amount"]],
+      body: rows.length ? rows : [["", ""]],
+    });
 
-    const fileName = `Church_Ledger_${selectedDate}.pdf`;
-    const dataUri = doc.output("datauristring");
-    const base64File = dataUri.split(",")[1];
+    y = doc.lastAutoTable.finalY + 5;
+  });
 
-    // Save metadata + base64 to localStorage for Records page
-    const saved = JSON.parse(localStorage.getItem("saved-pdfs") || "[]");
-    const updated = [
-      { name: fileName, date: selectedDate, file: base64File },
-      ...saved,
-    ];
+  const fileName = `Church_Ledger_${selectedDate}.pdf`;
 
-    try {
-      localStorage.setItem("saved-pdfs", JSON.stringify(updated));
-    } catch (err) {
-      console.warn("Could not save report to localStorage", err);
-    }
+  // 🔥 convert to base64
+  const dataUri = doc.output("datauristring");
+  const base64File = dataUri.split(",")[1];
 
-    doc.save(fileName);
-  };
+  // 🔥 SAVE TO BACKEND (THIS WAS MISSING)
+  try {
+    await fetch(`${import.meta.env.VITE_API_URL}/api/reports`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: fileName,
+        date: selectedDate,
+        file: base64File,
+      }),
+    });
+  } catch (err) {
+    console.error("Failed to save report", err);
+  }
+
+  doc.save(fileName);
+};
 
   return (
     <div className="min-h-screen bg-gray-100">

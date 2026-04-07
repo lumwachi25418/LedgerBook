@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const Report = require('./models/Reports');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
@@ -40,8 +41,11 @@ app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().
 // Auth
 app.post('/auth/register', async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+    const { email, password, organisation } = req.body;
+
+    if (!email || !password || !organisation) {
+      return res.status(400).json({ error: 'email, password and organisation are required' });
+    }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) return res.status(400).json({ error: 'Invalid email format' });
@@ -50,7 +54,7 @@ app.post('/auth/register', async (req, res) => {
     const existing = await User.findOne({ where: { email } });
     if (existing) return res.status(409).json({ error: 'Email already in use' });
 
-    const organization = await Organization.create({ name: `${email.split('@')[0]}-org` });
+    const organization = await Organization.create({ name: organisation });
     const passwordHash = await bcrypt.hash(password, 10);
     const user = await User.create({ email, passwordHash, OrganizationId: organization.id });
 
@@ -72,6 +76,7 @@ app.post('/auth/register', async (req, res) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 app.get('/admin/users', async (req, res) => {
   try {
     const users = await User.findAll({
@@ -133,7 +138,45 @@ app.get('/auth/me', authenticate, (req, res) => {
   });
 });
 
-// Protected ledger routes
+// ====================== REPORT ROUTES ======================
+app.get("/api/reports", async (req, res) => {
+  try {
+    const reports = await Report.findAll({ order: [["createdAt", "DESC"]] });
+    res.json({ data: reports });
+  } catch (err) {
+    console.error("GET /api/reports error", err);
+    res.status(500).json({ error: "Failed to fetch reports" });
+  }
+});
+
+app.post("/api/reports", async (req, res) => {
+  try {
+    const { name, date, file } = req.body;
+    if (!name || !date || !file) return res.status(400).json({ error: "name, date, and file are required" });
+
+    const report = await Report.create({ name, date, file });
+    res.status(201).json({ data: report });
+  } catch (err) {
+    console.error("POST /api/reports error", err);
+    res.status(500).json({ error: "Failed to create report" });
+  }
+});
+
+app.delete("/api/reports/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const report = await Report.findByPk(id);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+
+    await report.destroy();
+    res.json({ data: { message: "Report deleted", id } });
+  } catch (err) {
+    console.error("DELETE /api/reports/:id error", err);
+    res.status(500).json({ error: "Failed to delete report" });
+  }
+});
+
+// ====================== LEDGER ROUTES ======================
 app.use('/api/ledgers', authenticate);
 
 app.get('/api/ledgers', async (req, res) => {
@@ -206,65 +249,95 @@ app.delete('/api/ledgers/:ledgerId', async (req, res) => {
   }
 });
 
-// transaction routes
+// ====================== TRANSACTION ROUTES ======================
 app.get('/api/ledgers/:ledgerId/transactions', async (req, res) => {
-  const id = Number(req.params.ledgerId);
-  const ledger = await Ledger.findOne({ where: { id, OrganizationId: req.organizationId }, include: [Transaction] });
-  if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
-  res.json({ data: ledger.Transactions });
+  try {
+    const id = Number(req.params.ledgerId);
+    const ledger = await Ledger.findOne({ where: { id, OrganizationId: req.organizationId }, include: [Transaction] });
+    if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
+    res.json({ data: ledger.Transactions });
+  } catch (e) {
+    console.error('GET /api/ledgers/:ledgerId/transactions error', e);
+    res.status(500).json({ error: 'Could not fetch transactions' });
+  }
 });
 
 app.post('/api/ledgers/:ledgerId/transactions', async (req, res) => {
-  const ledgerId = Number(req.params.ledgerId);
-  const ledger = await Ledger.findOne({ where: { id: ledgerId, OrganizationId: req.organizationId } });
-  if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
-  if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
+  try {
+    const ledgerId = Number(req.params.ledgerId);
+    const ledger = await Ledger.findOne({ where: { id: ledgerId, OrganizationId: req.organizationId } });
+    if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
 
-  const { description, amount, date } = req.body;
-  if (!description || amount === undefined || !date) {
-    return res.status(400).json({ error: 'description, amount, and date are required' });
+    const { description, amount, date, payment_method, category, transaction_type } = req.body;
+    if (!description || amount === undefined || !date) {
+      return res.status(400).json({ error: 'description, amount, and date are required' });
+    }
+
+    const transaction = await Transaction.create({
+      description,
+      amount,
+      date,
+      LedgerId: ledger.id,
+      payment_method: payment_method || "cash",
+      category: category || "",
+      transaction_type: transaction_type || "",
+    });
+    res.status(201).json({ data: transaction });
+  } catch (e) {
+    console.error('POST /api/ledgers/:ledgerId/transactions error', e);
+    res.status(500).json({ error: 'Could not create transaction' });
   }
-
-  const transaction = await Transaction.create({ description, amount, date, LedgerId: ledger.id });
-  res.status(201).json({ data: transaction });
 });
 
 app.put('/api/ledgers/:ledgerId/transactions/:transactionId', async (req, res) => {
-  const ledgerId = Number(req.params.ledgerId);
-  const txId = Number(req.params.transactionId);
+  try {
+    const ledgerId = Number(req.params.ledgerId);
+    const txId = Number(req.params.transactionId);
 
-  const ledger = await Ledger.findOne({ where: { id: ledgerId, OrganizationId: req.organizationId } });
-  if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
+    const ledger = await Ledger.findOne({ where: { id: ledgerId, OrganizationId: req.organizationId } });
+    if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
 
-  const transaction = await Transaction.findOne({ where: { id: txId, LedgerId: ledger.id } });
-  if (!transaction) return res.status(404).json({ error: 'Transaction not found' });
+    const transaction = await Transaction.findOne({ where: { id: txId, LedgerId: ledger.id } });
+    if (!transaction) return res.status(404).json({ error: 'Transaction not found' });
 
-  const { description, amount, date } = req.body;
-  if (description !== undefined) transaction.description = description;
-  if (amount !== undefined) transaction.amount = amount;
-  if (date !== undefined) transaction.date = date;
-  await transaction.save();
+    const { description, amount, date, payment_method, category, transaction_type } = req.body;
+    if (description !== undefined) transaction.description = description;
+    if (amount !== undefined) transaction.amount = amount;
+    if (date !== undefined) transaction.date = date;
+    if (payment_method !== undefined) transaction.payment_method = payment_method;
+    if (category !== undefined) transaction.category = category;
+    if (transaction_type !== undefined) transaction.transaction_type = transaction_type;
+    await transaction.save();
 
-  res.json({ data: transaction });
+    res.json({ data: transaction });
+  } catch (e) {
+    console.error('PUT /api/ledgers/:ledgerId/transactions/:transactionId error', e);
+    res.status(500).json({ error: 'Could not update transaction' });
+  }
 });
 
 app.delete('/api/ledgers/:ledgerId/transactions/:transactionId', async (req, res) => {
-  const ledgerId = Number(req.params.ledgerId);
-  const txId = Number(req.params.transactionId);
+  try {
+    const ledgerId = Number(req.params.ledgerId);
+    const txId = Number(req.params.transactionId);
 
-  const ledger = await Ledger.findOne({ where: { id: ledgerId, OrganizationId: req.organizationId } });
-  if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
+    const ledger = await Ledger.findOne({ where: { id: ledgerId, OrganizationId: req.organizationId } });
+    if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
 
-  const transaction = await Transaction.findOne({ where: { id: txId, LedgerId: ledger.id } });
-  if (!transaction) return res.status(404).json({ error: 'Transaction not found' });
+    const transaction = await Transaction.findOne({ where: { id: txId, LedgerId: ledger.id } });
+    if (!transaction) return res.status(404).json({ error: 'Transaction not found' });
 
-  await transaction.destroy();
-  res.json({ data: { message: 'Transaction deleted', id: txId } });
+    await transaction.destroy();
+    res.json({ data: { message: 'Transaction deleted', id: txId } });
+  } catch (e) {
+    console.error('DELETE /api/ledgers/:ledgerId/transactions/:transactionId error', e);
+    res.status(500).json({ error: 'Could not delete transaction' });
+  }
 });
 
+// ====================== DB SYNC & START ======================
 const ensureOrganizationIds = async () => {
   const usersWithoutOrg = await User.findAll({ where: { OrganizationId: null } });
-
   for (const user of usersWithoutOrg) {
     const orgName = `${user.email.split('@')[0]}-org`;
     const organization = await Organization.create({ name: orgName });
@@ -273,15 +346,13 @@ const ensureOrganizationIds = async () => {
   }
 };
 
-// sync DB and start
 (async () => {
   try {
-    await sequelize.sync();
+    await sequelize.sync({ alter: true });
     await ensureOrganizationIds();
     app.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`));
   } catch (err) {
     console.error('Start failed:', err);
-
     if (process.env.NODE_ENV !== 'production') {
       console.log('Attempting a force-sync fallback for local development (data may be lost)');
       try {
@@ -293,7 +364,6 @@ const ensureOrganizationIds = async () => {
         console.error('Force sync also failed:', fallbackErr);
       }
     }
-
     process.exit(1);
   }
 })();
