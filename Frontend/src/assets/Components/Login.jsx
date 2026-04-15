@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { API_BASE } from "../../Utilities/api";
 
 export default function Login({ onLogin }) {
   const location = useLocation();
@@ -53,7 +54,7 @@ export default function Login({ onLogin }) {
     }, 60);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/auth/login`, {
+      const response = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: normalizedEmail, password: normalizedPassword }),

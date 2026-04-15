@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const { DataTypes } = require('sequelize');
 const Report = require('./models/Reports');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -33,6 +34,34 @@ const apiLimiter = rateLimit({
 });
 
 app.use('/api', apiLimiter);
+
+const ensureLegacySchemaCompatibility = async () => {
+  const queryInterface = sequelize.getQueryInterface();
+
+  try {
+    const ledgerColumns = await queryInterface.describeTable('Ledgers');
+
+    if (!ledgerColumns.isFinalized) {
+      await queryInterface.addColumn('Ledgers', 'isFinalized', {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      });
+      console.log('Added missing Ledgers.isFinalized column for legacy database compatibility');
+    }
+  } catch (err) {
+    console.error('Failed to verify legacy schema compatibility:', err);
+    throw err;
+  }
+};
+
+const findLedgerForOrganization = (ledgerId, organizationId, options = {}) =>
+  Ledger.findOne({ where: { id: ledgerId, organizationId }, ...options });
+
+const parseTransactionAmount = (amount) => {
+  const parsedAmount = Number(amount);
+  return Number.isFinite(parsedAmount) ? parsedAmount : null;
+};
 
 // base
 app.get('/', (req, res) => res.json({ message: 'Ledgerbook backend is running' }));
@@ -224,7 +253,7 @@ app.post('/api/ledgers', async (req, res) => {
 app.get('/api/ledgers/:ledgerId', async (req, res) => {
   try {
     const id = Number(req.params.ledgerId);
-    const ledger = await Ledger.findOne({ where: { id, organizationId: req.organizationId }, include: [Transaction] });
+    const ledger = await findLedgerForOrganization(id, req.organizationId, { include: [Transaction] });
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
     res.json({ data: ledger });
   } catch (e) {
@@ -236,10 +265,17 @@ app.get('/api/ledgers/:ledgerId', async (req, res) => {
 app.put('/api/ledgers/:ledgerId', async (req, res) => {
   try {
     const id = Number(req.params.ledgerId);
-    const ledger = await Ledger.findOne({ where: { id, organizationId: req.organizationId } });
+    const ledger = await findLedgerForOrganization(id, req.organizationId);
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
 
     const { name, description, isFinalized } = req.body;
+    const isTryingToUnlock = isFinalized !== undefined && Boolean(isFinalized) !== ledger.isFinalized;
+    const isTryingToEditMetadata = name !== undefined || description !== undefined;
+
+    if (ledger.isFinalized && (isTryingToUnlock || isTryingToEditMetadata)) {
+      return res.status(403).json({ error: 'Finalized ledgers are read-only' });
+    }
+
     if (name !== undefined) ledger.name = name;
     if (description !== undefined) ledger.description = description;
     if (isFinalized !== undefined) ledger.isFinalized = Boolean(isFinalized);
@@ -255,8 +291,9 @@ app.put('/api/ledgers/:ledgerId', async (req, res) => {
 app.delete('/api/ledgers/:ledgerId', async (req, res) => {
   try {
     const id = Number(req.params.ledgerId);
-    const ledger = await Ledger.findOne({ where: { id, organizationId: req.organizationId } });
+    const ledger = await findLedgerForOrganization(id, req.organizationId);
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
+    if (ledger.isFinalized) return res.status(403).json({ error: 'Finalized ledgers are read-only' });
 
     await ledger.destroy();
     res.json({ data: { message: 'Ledger deleted', id } });
@@ -270,7 +307,7 @@ app.delete('/api/ledgers/:ledgerId', async (req, res) => {
 app.get('/api/ledgers/:ledgerId/transactions', async (req, res) => {
   try {
     const id = Number(req.params.ledgerId);
-    const ledger = await Ledger.findOne({ where: { id, organizationId: req.organizationId }, include: [Transaction] });
+    const ledger = await findLedgerForOrganization(id, req.organizationId, { include: [Transaction] });
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
     res.json({ data: ledger.Transactions });
   } catch (e) {
@@ -282,17 +319,23 @@ app.get('/api/ledgers/:ledgerId/transactions', async (req, res) => {
 app.post('/api/ledgers/:ledgerId/transactions', async (req, res) => {
   try {
     const ledgerId = Number(req.params.ledgerId);
-    const ledger = await Ledger.findOne({ where: { id: ledgerId, organizationId: req.organizationId } });
+    const ledger = await findLedgerForOrganization(ledgerId, req.organizationId);
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
+    if (ledger.isFinalized) return res.status(403).json({ error: 'Finalized ledgers are read-only' });
 
     const { description, amount, date, payment_method, category, transaction_type } = req.body;
     if (!description || amount === undefined || !date) {
       return res.status(400).json({ error: 'description, amount, and date are required' });
     }
 
+    const parsedAmount = parseTransactionAmount(amount);
+    if (parsedAmount === null || parsedAmount < 0) {
+      return res.status(400).json({ error: 'amount must be a valid non-negative number' });
+    }
+
     const transaction = await Transaction.create({
       description,
-      amount,
+      amount: parsedAmount,
       date,
       LedgerId: ledger.id,
       payment_method: payment_method || "cash",
@@ -311,15 +354,22 @@ app.put('/api/ledgers/:ledgerId/transactions/:transactionId', async (req, res) =
     const ledgerId = Number(req.params.ledgerId);
     const txId = Number(req.params.transactionId);
 
-    const ledger = await Ledger.findOne({ where: { id: ledgerId, organizationId: req.organizationId } });
+    const ledger = await findLedgerForOrganization(ledgerId, req.organizationId);
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
+    if (ledger.isFinalized) return res.status(403).json({ error: 'Finalized ledgers are read-only' });
 
     const transaction = await Transaction.findOne({ where: { id: txId, LedgerId: ledger.id } });
     if (!transaction) return res.status(404).json({ error: 'Transaction not found' });
 
     const { description, amount, date, payment_method, category, transaction_type } = req.body;
     if (description !== undefined) transaction.description = description;
-    if (amount !== undefined) transaction.amount = amount;
+    if (amount !== undefined) {
+      const parsedAmount = parseTransactionAmount(amount);
+      if (parsedAmount === null || parsedAmount < 0) {
+        return res.status(400).json({ error: 'amount must be a valid non-negative number' });
+      }
+      transaction.amount = parsedAmount;
+    }
     if (date !== undefined) transaction.date = date;
     if (payment_method !== undefined) transaction.payment_method = payment_method;
     if (category !== undefined) transaction.category = category;
@@ -338,8 +388,9 @@ app.delete('/api/ledgers/:ledgerId/transactions/:transactionId', async (req, res
     const ledgerId = Number(req.params.ledgerId);
     const txId = Number(req.params.transactionId);
 
-    const ledger = await Ledger.findOne({ where: { id: ledgerId, organizationId: req.organizationId } });
+    const ledger = await findLedgerForOrganization(ledgerId, req.organizationId);
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
+    if (ledger.isFinalized) return res.status(403).json({ error: 'Finalized ledgers are read-only' });
 
     const transaction = await Transaction.findOne({ where: { id: txId, LedgerId: ledger.id } });
     if (!transaction) return res.status(404).json({ error: 'Transaction not found' });
@@ -369,6 +420,7 @@ const ensureOrganizationIds = async () => {
 (async () => {
   try {
     await sequelize.sync();
+    await ensureLegacySchemaCompatibility();
     await ensureOrganizationIds();
     app.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`));
   } catch (err) {
@@ -377,6 +429,7 @@ const ensureOrganizationIds = async () => {
       console.log('Attempting a schema sync fallback for local development');
       try {
         await sequelize.sync({ alter: true });
+        await ensureLegacySchemaCompatibility();
         await ensureOrganizationIds();
         app.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`));
         return;

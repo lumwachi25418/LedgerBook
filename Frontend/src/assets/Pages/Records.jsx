@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import {
+  API_BASE,
   createTransaction,
   getLedgers,
   updateLedger,
   updateTransaction,
 } from "../../Utilities/api";
-const apiBase = import.meta.env.VITE_API_URL || "http://localhost:3000";
 
 const typeOptions = [
   "offering",
@@ -308,7 +308,7 @@ export default function Records() {
     const base64File = dataUri.split(",")[1];
 
     try {
-      await fetch(`${apiBase}/api/reports`, {
+      await fetch(`${API_BASE}/api/reports`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -331,6 +331,8 @@ export default function Records() {
 
   const filteredLedgers = ledgers.filter((ledger) => {
     const query = search.toLowerCase();
+    const ledgerName = ledger.name?.toLowerCase() || "";
+    const ledgerDescription = ledger.description?.toLowerCase() || "";
     const categories = editorState[ledger.id] || {};
     const categoryNames = Object.keys(categories).join(" ").toLowerCase();
     const transactionText = (ledger.Transactions || [])
@@ -365,8 +367,8 @@ export default function Records() {
       .toLowerCase();
 
     return (
-      ledger.name?.toLowerCase().includes(query) ||
-      ledger.description?.toLowerCase().includes(query) ||
+      ledgerName.includes(query) ||
+      ledgerDescription.includes(query) ||
       categoryNames.includes(query) ||
       transactionText.includes(query) ||
       categorySummary.includes(query)

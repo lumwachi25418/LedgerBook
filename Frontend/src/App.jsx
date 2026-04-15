@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Router from "./assets/Components/Router";
 
 const normalizeUser = (user) => {
@@ -17,22 +17,30 @@ const normalizeUser = (user) => {
 };
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
-
-  useEffect(() => {
+  const [authState, setAuthState] = useState(() => {
     const token = localStorage.getItem("authToken");
     const userData = localStorage.getItem("authUser");
 
     if (token && userData) {
-      setIsLoggedIn(true);
       try {
-        setCurrentUser(normalizeUser(JSON.parse(userData)));
+        const parsedUser = normalizeUser(JSON.parse(userData));
+        return {
+          isLoggedIn: true,
+          currentUser: parsedUser,
+        };
       } catch {
-        setCurrentUser(null);
+        localStorage.removeItem("authToken");
+        localStorage.removeItem("authUser");
       }
     }
-  }, []);
+
+    return {
+      isLoggedIn: false,
+      currentUser: null,
+    };
+  });
+
+  const { isLoggedIn, currentUser } = authState;
 
   const updateUser = (user) => {
     const normalizedUser = normalizeUser(user);
@@ -42,16 +50,21 @@ export default function App() {
     } else {
       localStorage.removeItem("authUser");
     }
-    setCurrentUser(normalizedUser);
+    setAuthState((prev) => ({
+      ...prev,
+      currentUser: normalizedUser,
+    }));
   };
 
   const logout = () => {
     localStorage.removeItem("authToken");
     localStorage.removeItem("authUser");
-    setIsLoggedIn(false);
-    setCurrentUser(null);
+    setAuthState({
+      isLoggedIn: false,
+      currentUser: null,
+    });
     window.location.href = "/login";
   };
 
-  return <Router isLoggedIn={isLoggedIn} setIsLoggedIn={setIsLoggedIn} currentUser={currentUser} setCurrentUser={updateUser} logout={logout} />;
+  return <Router isLoggedIn={isLoggedIn} setIsLoggedIn={(value) => setAuthState((prev) => ({ ...prev, isLoggedIn: value }))} currentUser={currentUser} setCurrentUser={updateUser} logout={logout} />;
 }

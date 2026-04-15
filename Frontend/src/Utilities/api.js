@@ -1,4 +1,27 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const normalizeApiBase = (rawBase) => {
+  const fallbackBase = 'http://localhost:3000';
+  const base = rawBase || fallbackBase;
+
+  if (typeof window === 'undefined') {
+    return base;
+  }
+
+  try {
+    const url = new URL(base);
+
+    // Docker service names like "backend" are reachable from containers,
+    // but not from the user's browser on the host machine.
+    if (url.hostname === 'backend') {
+      url.hostname = window.location.hostname || 'localhost';
+    }
+
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return fallbackBase;
+  }
+};
+
+export const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL);
 
 export const getAuthToken = () => localStorage.getItem('authToken');
 
@@ -18,7 +41,14 @@ export const apiFetch = async (path, opts = {}) => {
   const url = `${API_BASE}${path}`;
   const optsWithAuth = getFetchOptions(opts);
 
-  const res = await fetch(url, optsWithAuth);
+  let res;
+
+  try {
+    res = await fetch(url, optsWithAuth);
+  } catch {
+    throw new Error(`Could not reach the backend at ${API_BASE}. Make sure the backend server is running.`);
+  }
+
   const body = await res.json().catch(() => ({}));
 
   if (res.status === 401) {

@@ -27,7 +27,7 @@ services:
       - '5173:4173'
     environment:
       - NODE_ENV=production
-      - VITE_API_URL=http://backend:3000
+      - VITE_API_URL=http://localhost:3000
     depends_on:
       - backend
 

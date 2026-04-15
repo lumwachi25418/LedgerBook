@@ -6,49 +6,43 @@ import Register from '../Pages/Register';
 import Login from './Login';
 
 function Router({ isLoggedIn, setIsLoggedIn, currentUser, setCurrentUser, logout }) {
-  const PrivateRoute = ({ children }) =>
-    isLoggedIn ? children : <Navigate to="/login" replace />;
-
-  const PublicRoute = ({ children }) =>
-    !isLoggedIn ? children : <Navigate to="/" replace />;
-
   return (
     <BrowserRouter>
       <Routes>
         <Route
           path="/"
           element={
-            <PrivateRoute>
+            isLoggedIn ? (
               <Layout logout={logout} currentUser={currentUser}>
                 <Home />
               </Layout>
-            </PrivateRoute>
+            ) : <Navigate to="/login" replace />
           }
         />
         <Route
           path="/records"
           element={
-            <PrivateRoute>
+            isLoggedIn ? (
               <Layout logout={logout} currentUser={currentUser}>
                 <Records />
               </Layout>
-            </PrivateRoute>
+            ) : <Navigate to="/login" replace />
           }
         />
         <Route
           path="/login"
           element={
-            <PublicRoute>
+            !isLoggedIn ? (
               <Login onLogin={(user) => { setIsLoggedIn(true); setCurrentUser(user); }} />
-            </PublicRoute>
+            ) : <Navigate to="/" replace />
           }
         />
         <Route
           path="/register"
           element={
-            <PublicRoute>
+            !isLoggedIn ? (
               <Register onRegister={(user) => { setIsLoggedIn(true); setCurrentUser(user); }} />
-            </PublicRoute>
+            ) : <Navigate to="/" replace />
           }
         />
         <Route path="*" element={<Navigate to={isLoggedIn ? "/" : "/login"} replace />} />
