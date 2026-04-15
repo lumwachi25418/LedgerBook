@@ -1,6 +1,21 @@
 import { useState, useEffect } from "react";
 import Router from "./assets/Components/Router";
 
+const normalizeUser = (user) => {
+  if (!user) return null;
+
+  return {
+    ...user,
+    organizationId:
+      user.organizationId ?? user.OrganizationId ?? null,
+    organizationName:
+      user.organizationName ??
+      user.Organization?.name ??
+      user.organisation ??
+      null,
+  };
+};
+
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -12,7 +27,7 @@ export default function App() {
     if (token && userData) {
       setIsLoggedIn(true);
       try {
-        setCurrentUser(JSON.parse(userData));
+        setCurrentUser(normalizeUser(JSON.parse(userData)));
       } catch {
         setCurrentUser(null);
       }
@@ -20,12 +35,14 @@ export default function App() {
   }, []);
 
   const updateUser = (user) => {
+    const normalizedUser = normalizeUser(user);
+
     if (user) {
-      localStorage.setItem("authUser", JSON.stringify(user));
+      localStorage.setItem("authUser", JSON.stringify(normalizedUser));
     } else {
       localStorage.removeItem("authUser");
     }
-    setCurrentUser(user);
+    setCurrentUser(normalizedUser);
   };
 
   const logout = () => {

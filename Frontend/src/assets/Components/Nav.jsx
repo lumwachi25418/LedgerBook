@@ -5,6 +5,9 @@ import { Menu, X } from "lucide-react";
 export default function Nav({ logout, currentUser }) {
   const [open, setOpen] = useState(false);
   const today = new Date().toLocaleDateString("en-KE");
+  const organizationLabel =
+    currentUser?.organizationName ||
+    (currentUser?.organizationId ? `ID ${currentUser.organizationId}` : "");
 
   const handleLogout = () => {
     if (typeof logout === "function") {
@@ -42,10 +45,8 @@ export default function Nav({ logout, currentUser }) {
           <span className="opacity-90">
             👤 {currentUser?.email || 'User'}
           </span>
-          {currentUser?.organizationName ? (
-            <span className="opacity-90">🏢 {currentUser.organizationName}</span>
-          ) : currentUser?.organizationId ? (
-            <span className="opacity-90">🏢 ID {currentUser.organizationId}</span>
+          {organizationLabel ? (
+            <span className="opacity-90">🏢 {organizationLabel}</span>
           ) : null}
           <Link
             to="/records"
@@ -82,7 +83,14 @@ export default function Nav({ logout, currentUser }) {
 
           <div>📅 {today}</div>
           <div>👤 {currentUser?.email || 'User'}</div>
-          {currentUser?.organizationId && <div>🏢 {currentUser.organizationId}</div>}
+          {organizationLabel && <div>🏢 {organizationLabel}</div>}
+          <Link
+            to="/records"
+            className="block hover:bg-amber-700 px-3 py-1 rounded"
+            onClick={() => setOpen(false)}
+          >
+            Records
+          </Link>
 
           <button
             onClick={handleLogout}

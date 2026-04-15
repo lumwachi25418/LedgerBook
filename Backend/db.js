@@ -1,13 +1,14 @@
 const { Sequelize } = require('sequelize');
+const path = require('path');
 require('dotenv').config();
 
 const databaseUrl = process.env.DATABASE_URL;
-const dialect = 'postgres'; // default to postgres, can be overridden by env variable
+const sqliteStorage = path.resolve(__dirname, process.env.DATABASE_STORAGE || 'ledgerbook.sqlite');
 
 let sequelize;
 if (databaseUrl) {
   sequelize = new Sequelize(databaseUrl, {
-    dialect:'postgres',
+    dialect: 'postgres',
     logging: true,
     dialectOptions: {
       ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
@@ -16,7 +17,7 @@ if (databaseUrl) {
 } else {
   sequelize = new Sequelize({
     dialect: 'sqlite',
-    storage:process.env.DATABASE_STORAGE || 'Ledgerbook.sqlite',
+    storage: sqliteStorage,
     logging: false,
   });
 }

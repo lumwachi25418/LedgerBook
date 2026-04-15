@@ -41,7 +41,9 @@ app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().
 // Auth
 app.post('/auth/register', async (req, res) => {
   try {
-    const { email, password, organisation } = req.body;
+    const email = req.body?.email?.trim().toLowerCase();
+    const password = req.body?.password?.trim();
+    const organisation = req.body?.organisation?.replace(/\s+/g, ' ').trim();
 
     if (!email || !password || !organisation) {
       return res.status(400).json({ error: 'email, password and organisation are required' });
@@ -54,9 +56,22 @@ app.post('/auth/register', async (req, res) => {
     const existing = await User.findOne({ where: { email } });
     if (existing) return res.status(409).json({ error: 'Email already in use' });
 
-    const organization = await Organization.create({ name: organisation });
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await User.create({ email, passwordHash, OrganizationId: organization.id });
+
+    const { organization, user } = await sequelize.transaction(async (transaction) => {
+      const [tenantOrganization] = await Organization.findOrCreate({
+        where: { name: organisation },
+        defaults: { name: organisation },
+        transaction,
+      });
+
+      const createdUser = await User.create(
+        { email, passwordHash, organizationId: tenantOrganization.id },
+        { transaction }
+      );
+
+      return { organization: tenantOrganization, user: createdUser };
+    });
 
     const token = jwt.sign({ userId: user.id, organizationId: organization.id }, process.env.JWT_SECRET, { expiresIn: '8h' });
 
@@ -80,8 +95,8 @@ app.post('/auth/register', async (req, res) => {
 app.get('/admin/users', async (req, res) => {
   try {
     const users = await User.findAll({
-      attributes: ['id', 'email', 'createdAt', 'OrganizationId'],
-      include: [{ model: Organization, attributes: ['id', 'name'] }],
+        attributes: ['id', 'email', 'createdAt', 'organizationId'],
+        include: [{ model: Organization, attributes: ['id', 'name'] }],
     });
     res.json({ data: users });
   } catch (err) {
@@ -92,7 +107,8 @@ app.get('/admin/users', async (req, res) => {
 
 app.post('/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = req.body?.email?.trim().toLowerCase();
+    const password = req.body?.password?.trim();
     if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
 
     const user = await User.findOne({ where: { email } });
@@ -101,15 +117,15 @@ app.post('/auth/login', async (req, res) => {
     const match = await bcrypt.compare(password, user.passwordHash);
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const organization = user.OrganizationId ? await Organization.findByPk(user.OrganizationId) : null;
-    const token = jwt.sign({ userId: user.id, organizationId: user.OrganizationId }, process.env.JWT_SECRET, { expiresIn: '8h' });
+    const organization = user.organizationId ? await Organization.findByPk(user.organizationId) : null;
+    const token = jwt.sign({ userId: user.id, organizationId: user.organizationId }, process.env.JWT_SECRET, { expiresIn: '8h' });
 
     return res.json({
       data: {
         user: {
           id: user.id,
           email: user.email,
-          organizationId: user.OrganizationId,
+          organizationId: user.organizationId,
           organizationName: organization?.name || null,
         },
         token,
@@ -181,7 +197,7 @@ app.use('/api/ledgers', authenticate);
 
 app.get('/api/ledgers', async (req, res) => {
   try {
-    const ledgers = await Ledger.findAll({ where: { OrganizationId: req.organizationId }, include: [Transaction] });
+    const ledgers = await Ledger.findAll({ where: { organizationId: req.organizationId }, include: [Transaction] });
     res.json({ data: ledgers });
   } catch (e) {
     console.error('GET /api/ledgers error', e);
@@ -194,10 +210,10 @@ app.post('/api/ledgers', async (req, res) => {
     const { name, description } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
 
-    const orgId = req.organizationId || req.user.OrganizationId;
+    const orgId = req.organizationId || req.user.organizationId;
     if (!orgId) return res.status(400).json({ error: 'OrganizationId missing for ledger creation' });
 
-    const ledger = await Ledger.create({ name, description, UserId: req.user.id, OrganizationId: orgId });
+    const ledger = await Ledger.create({ name, description, UserId: req.user.id, organizationId: orgId });
     res.status(201).json({ data: ledger });
   } catch (e) {
     console.error('POST /api/ledgers error', e);
@@ -208,7 +224,7 @@ app.post('/api/ledgers', async (req, res) => {
 app.get('/api/ledgers/:ledgerId', async (req, res) => {
   try {
     const id = Number(req.params.ledgerId);
-    const ledger = await Ledger.findOne({ where: { id, OrganizationId: req.organizationId }, include: [Transaction] });
+    const ledger = await Ledger.findOne({ where: { id, organizationId: req.organizationId }, include: [Transaction] });
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
     res.json({ data: ledger });
   } catch (e) {
@@ -220,12 +236,13 @@ app.get('/api/ledgers/:ledgerId', async (req, res) => {
 app.put('/api/ledgers/:ledgerId', async (req, res) => {
   try {
     const id = Number(req.params.ledgerId);
-    const ledger = await Ledger.findOne({ where: { id, OrganizationId: req.organizationId } });
+    const ledger = await Ledger.findOne({ where: { id, organizationId: req.organizationId } });
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
 
-    const { name, description } = req.body;
+    const { name, description, isFinalized } = req.body;
     if (name !== undefined) ledger.name = name;
     if (description !== undefined) ledger.description = description;
+    if (isFinalized !== undefined) ledger.isFinalized = Boolean(isFinalized);
     await ledger.save();
 
     res.json({ data: ledger });
@@ -238,7 +255,7 @@ app.put('/api/ledgers/:ledgerId', async (req, res) => {
 app.delete('/api/ledgers/:ledgerId', async (req, res) => {
   try {
     const id = Number(req.params.ledgerId);
-    const ledger = await Ledger.findOne({ where: { id, OrganizationId: req.organizationId } });
+    const ledger = await Ledger.findOne({ where: { id, organizationId: req.organizationId } });
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
 
     await ledger.destroy();
@@ -253,7 +270,7 @@ app.delete('/api/ledgers/:ledgerId', async (req, res) => {
 app.get('/api/ledgers/:ledgerId/transactions', async (req, res) => {
   try {
     const id = Number(req.params.ledgerId);
-    const ledger = await Ledger.findOne({ where: { id, OrganizationId: req.organizationId }, include: [Transaction] });
+    const ledger = await Ledger.findOne({ where: { id, organizationId: req.organizationId }, include: [Transaction] });
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
     res.json({ data: ledger.Transactions });
   } catch (e) {
@@ -265,7 +282,7 @@ app.get('/api/ledgers/:ledgerId/transactions', async (req, res) => {
 app.post('/api/ledgers/:ledgerId/transactions', async (req, res) => {
   try {
     const ledgerId = Number(req.params.ledgerId);
-    const ledger = await Ledger.findOne({ where: { id: ledgerId, OrganizationId: req.organizationId } });
+    const ledger = await Ledger.findOne({ where: { id: ledgerId, organizationId: req.organizationId } });
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
 
     const { description, amount, date, payment_method, category, transaction_type } = req.body;
@@ -294,7 +311,7 @@ app.put('/api/ledgers/:ledgerId/transactions/:transactionId', async (req, res) =
     const ledgerId = Number(req.params.ledgerId);
     const txId = Number(req.params.transactionId);
 
-    const ledger = await Ledger.findOne({ where: { id: ledgerId, OrganizationId: req.organizationId } });
+    const ledger = await Ledger.findOne({ where: { id: ledgerId, organizationId: req.organizationId } });
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
 
     const transaction = await Transaction.findOne({ where: { id: txId, LedgerId: ledger.id } });
@@ -321,7 +338,7 @@ app.delete('/api/ledgers/:ledgerId/transactions/:transactionId', async (req, res
     const ledgerId = Number(req.params.ledgerId);
     const txId = Number(req.params.transactionId);
 
-    const ledger = await Ledger.findOne({ where: { id: ledgerId, OrganizationId: req.organizationId } });
+    const ledger = await Ledger.findOne({ where: { id: ledgerId, organizationId: req.organizationId } });
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
 
     const transaction = await Transaction.findOne({ where: { id: txId, LedgerId: ledger.id } });
@@ -337,31 +354,34 @@ app.delete('/api/ledgers/:ledgerId/transactions/:transactionId', async (req, res
 
 // ====================== DB SYNC & START ======================
 const ensureOrganizationIds = async () => {
-  const usersWithoutOrg = await User.findAll({ where: { OrganizationId: null } });
+  const usersWithoutOrg = await User.findAll({ where: { organizationId: null } });
   for (const user of usersWithoutOrg) {
     const orgName = `${user.email.split('@')[0]}-org`;
-    const organization = await Organization.create({ name: orgName });
-    user.OrganizationId = organization.id;
+    const [organization] = await Organization.findOrCreate({
+      where: { name: orgName },
+      defaults: { name: orgName },
+    });
+    user.organizationId = organization.id;
     await user.save();
   }
 };
 
 (async () => {
   try {
-    await sequelize.sync({ alter: true });
+    await sequelize.sync();
     await ensureOrganizationIds();
     app.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`));
   } catch (err) {
     console.error('Start failed:', err);
     if (process.env.NODE_ENV !== 'production') {
-      console.log('Attempting a force-sync fallback for local development (data may be lost)');
+      console.log('Attempting a schema sync fallback for local development');
       try {
-        await sequelize.sync({ force: true });
+        await sequelize.sync({ alter: true });
         await ensureOrganizationIds();
         app.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`));
         return;
       } catch (fallbackErr) {
-        console.error('Force sync also failed:', fallbackErr);
+        console.error('Schema sync fallback also failed:', fallbackErr);
       }
     }
     process.exit(1);

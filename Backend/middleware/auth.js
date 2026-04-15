@@ -15,12 +15,12 @@ const authenticate = async (req, res, next) => {
     const user = await User.findByPk(decoded.userId);
     if (!user) return res.status(401).json({ error: 'User not found' });
 
-    const organization = user.OrganizationId
-      ? await Organization.findByPk(user.OrganizationId)
+    const organization = user.organizationId
+      ? await Organization.findByPk(user.organizationId)
       : null;
 
     req.user = user;
-    req.organizationId = user.OrganizationId;
+    req.organizationId = user.organizationId;
     req.organization = organization;
 
     next();

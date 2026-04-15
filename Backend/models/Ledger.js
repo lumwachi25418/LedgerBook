@@ -8,6 +8,7 @@ const Ledger = sequelize.define('Ledger', {
   id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
   name: { type: DataTypes.STRING, allowNull: false },
   description: { type: DataTypes.TEXT },
+  isFinalized: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
 }, { timestamps: true });
 
 Ledger.belongsTo(User, { foreignKey: { allowNull: false }, onDelete: 'CASCADE' });

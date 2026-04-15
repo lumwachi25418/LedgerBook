@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 function Register({ onRegister }) {
   const [email, setEmail] = useState('');
-  const [Organisation, setOrganisation] = useState(''); 
+  const [organisation, setOrganisation] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -13,12 +13,13 @@ function Register({ onRegister }) {
     e.preventDefault();
     setError('');
 
-    const normalizedEmail = email.trim();
+    const normalizedEmail = email.trim().toLowerCase();
     const normalizedPassword = password.trim();
+    const normalizedOrganisation = organisation.trim();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!normalizedEmail || !normalizedPassword) {
-      setError('Please provide both email and password.');
+    if (!normalizedEmail || !normalizedPassword || !normalizedOrganisation) {
+      setError('Please provide email, organisation, and password.');
       return;
     }
 
@@ -38,7 +39,11 @@ function Register({ onRegister }) {
       const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), organisation: Organisation.trim(), password: password.trim() }),
+        body: JSON.stringify({
+          email: normalizedEmail,
+          organisation: normalizedOrganisation,
+          password: normalizedPassword,
+        }),
       });
 
       const payload = await response.json();
@@ -57,12 +62,18 @@ function Register({ onRegister }) {
         return;
       }
 
-      const userInfo = payload?.data?.user || { email: normalizedEmail };
-      localStorage.setItem('authToken', token);
-      localStorage.setItem('authUser', JSON.stringify(userInfo));
-      onRegister(userInfo);
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('authUser');
+      if (typeof onRegister === 'function') {
+        onRegister(null);
+      }
       setLoading(false);
-      navigate('/');
+      navigate('/login', {
+        state: {
+          registered: true,
+          email: normalizedEmail,
+        },
+      });
     } catch (err) {
       setError(`Network error while registering. Please try again. ${err?.message || ''}`.trim());
       setLoading(false);
@@ -101,7 +112,7 @@ function Register({ onRegister }) {
             <label className="block text-sm font-medium text-gray-700 mb-1">Organisation</label>
             <input
               type="text"
-              value={Organisation || ""}    
+              value={organisation || ""}
               onChange={(e) => setOrganisation(e.target.value)} 
               placeholder="Enter your organisation"
               className="w-full p-3 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-amber-500"

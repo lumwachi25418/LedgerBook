@@ -1,17 +1,32 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 export default function Login({ onLogin }) {
+  const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [successMessage, setSuccessMessage] = useState("");
+
+  useEffect(() => {
+    if (location.state?.registered) {
+      setSuccessMessage(
+        location.state?.email
+          ? `Registration successful for ${location.state.email}. Please log in.`
+          : "Registration successful. Please log in."
+      );
+      setEmail(location.state?.email || "");
+    }
+  }, [location.state]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setSuccessMessage("");
 
-    const normalizedEmail = email.trim();
+    const normalizedEmail = email.trim().toLowerCase();
     const normalizedPassword = password.trim();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -93,6 +108,12 @@ export default function Login({ onLogin }) {
         {error && (
           <div className="bg-red-100 text-red-700 p-2 rounded mb-4 text-center">
             {error}
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="bg-green-100 text-green-700 p-2 rounded mb-4 text-center">
+            {successMessage}
           </div>
         )}
 

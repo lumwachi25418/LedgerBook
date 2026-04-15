@@ -37,5 +37,12 @@ export const apiFetch = async (path, opts = {}) => {
 
 export const getLedgers = () => apiFetch('/api/ledgers');
 export const createLedger = (data) => apiFetch('/api/ledgers', { method: 'POST', body: JSON.stringify(data) });
+export const updateLedger = (ledgerId, data) =>
+  apiFetch(`/api/ledgers/${ledgerId}`, { method: 'PUT', body: JSON.stringify(data) });
 export const createTransaction = (ledgerId, data) => apiFetch(`/api/ledgers/${ledgerId}/transactions`, { method: 'POST', body: JSON.stringify(data) });
 export const getLedgerTransactions = (ledgerId) => apiFetch(`/api/ledgers/${ledgerId}/transactions`);
+export const updateTransaction = (ledgerId, transactionId, data) =>
+  apiFetch(`/api/ledgers/${ledgerId}/transactions/${transactionId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
