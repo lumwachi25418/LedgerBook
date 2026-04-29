@@ -51,8 +51,7 @@ export default function Records() {
     const transactionText = (ledger.Transactions || [])
       .map((transaction) => transaction.description)
       .join(" ")
-      .toLowerCase();￼
-Password
+      .toLowerCase();
 
     return (
       ledger.name?.toLowerCase().includes(query) ||
