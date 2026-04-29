@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { getLedgers, createLedger, createTransaction, updateTransaction } from "../../Utilities/api";
 
 const denominations = [1000, 500, 200, 100, 50, 40, 20, 10, 5];
-const defaultCategories = ["English Service", "Kiswahili Service", "Sunday School", "Teens"];
+const defaultCategories = ["English Service", "Kiswahili Service", "Youth Service", "Sunday School", "Teens"];
+const bereavementCategories = ["Bereavement Cash", "Bereavement M-Pesa"];
 
 const typeOptions = [
   "offering",
@@ -24,7 +25,7 @@ export default function LedgerApp() {
   const initialRow = Object.fromEntries(denominations.map(d => [d, 0]));
   const emptyTypes = Object.fromEntries(typeOptions.map(t => [t, 0]));
 
-  const [categories, setCategories] = useState(defaultCategories);
+  const [categories, setCategories] = useState([...defaultCategories, ...bereavementCategories]);
   const [newCategory, setNewCategory] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [dataByDate, setDataByDate] = useState({});
@@ -149,18 +150,17 @@ export default function LedgerApp() {
     (categoryData[cat]?.cash || []).reduce((sum, row) => sum + calculateRowTotal(row), 0);
 
   const calculateCategoryTotal = (cat) => {
-    const data = categoryData[cat];
-    if (!data) return 0;
-
-    let total = calculateCashTotal(cat);
-
-    total += Object.values(data.mpesa || {}).reduce((s, v) => s + (v || 0), 0);
-    total += Object.values(data.cheque || {}).reduce((s, v) => s + (v || 0), 0);
-
-    return total;
+    // Home page only has cash - mpesa and cheque are filled in Records later
+    return calculateCashTotal(cat);
   };
 
-  const grandTotal = categories.reduce((sum, cat) => sum + calculateCategoryTotal(cat), 0);
+  // Separate totals for bereavement categories
+  const bereavementCashTotal = calculateCategoryTotal("Bereavement Cash");
+  const bereavementMpesaTotal = calculateCategoryTotal("Bereavement M-Pesa");
+  
+  // Grand total excludes bereavement (shown separately)
+  const regularCategories = categories.filter(c => !bereavementCategories.includes(c));
+  const grandTotal = regularCategories.reduce((sum, cat) => sum + calculateCategoryTotal(cat), 0);
 
   const buildTransactionPayloads = () => {
     const payloads = [];
@@ -331,28 +331,6 @@ export default function LedgerApp() {
                     ))}
                   </tbody>
                 </table>
-
-                {showControls && (
-                  <div className="mt-4 grid grid-cols-2 gap-4">
-                    {["mpesa", "cheque"].map(payment => (
-                      <div key={payment}>
-                        <h3 className="font-semibold uppercase mb-2">{payment}</h3>
-
-                        {typeOptions.map(type => (
-                          <div key={type} className="flex justify-between mb-1">
-                            <label className="text-sm">{type}</label>
-                            <input
-                              type="number"
-                              value={categoryData[cat]?.[payment]?.[type] || ""}
-                              onChange={e => handlePaymentChange(cat, payment, type, e.target.value)}
-                              className="border p-1 w-24 text-right"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
 
                 <div className="mt-2 font-bold text-right">
                   Total: {formatKES(calculateCategoryTotal(cat))}
