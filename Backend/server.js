@@ -17,6 +17,7 @@ const authenticate = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 if (!process.env.JWT_SECRET) {
   console.error('Missing JWT_SECRET in environment. The server will not start.');
@@ -102,7 +103,7 @@ app.post('/auth/register', async (req, res) => {
       return { organization: tenantOrganization, user: createdUser };
     });
 
-    const token = jwt.sign({ userId: user.id, organizationId: organization.id }, process.env.JWT_SECRET, { expiresIn: '8h' });
+    const token = jwt.sign({ userId: user.id, organizationId: organization.id }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
     return res.status(201).json({
       data: {
@@ -147,7 +148,7 @@ app.post('/auth/login', async (req, res) => {
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
 
     const organization = user.organizationId ? await Organization.findByPk(user.organizationId) : null;
-    const token = jwt.sign({ userId: user.id, organizationId: user.organizationId }, process.env.JWT_SECRET, { expiresIn: '8h' });
+    const token = jwt.sign({ userId: user.id, organizationId: user.organizationId }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
     return res.json({
       data: {
@@ -313,6 +314,98 @@ app.get('/api/ledgers/:ledgerId/transactions', async (req, res) => {
   } catch (e) {
     console.error('GET /api/ledgers/:ledgerId/transactions error', e);
     res.status(500).json({ error: 'Could not fetch transactions' });
+  }
+});
+
+app.post('/api/ledgers/:ledgerId/transactions/bulk', async (req, res) => {
+  try {
+    const ledgerId = Number(req.params.ledgerId);
+    const ledger = await findLedgerForOrganization(ledgerId, req.organizationId);
+    if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
+    if (ledger.isFinalized) return res.status(403).json({ error: 'Finalized ledgers are read-only' });
+
+    const transactions = Array.isArray(req.body?.transactions) ? req.body.transactions : [];
+    if (transactions.length === 0) {
+      return res.status(400).json({ error: 'transactions must contain at least one entry' });
+    }
+
+    const mergedTransactions = Array.from(transactions.reduce((entriesByKey, entry) => {
+      const { description, amount, date, payment_method, category, transaction_type } = entry;
+      if (!description || amount === undefined || !date) {
+        const error = new Error('description, amount, and date are required for every transaction');
+        error.status = 400;
+        throw error;
+      }
+
+      const parsedAmount = parseTransactionAmount(amount);
+      if (parsedAmount === null || parsedAmount < 0) {
+        const error = new Error('amount must be a valid non-negative number');
+        error.status = 400;
+        throw error;
+      }
+
+      const normalizedPaymentMethod = payment_method || "cash";
+      const normalizedCategory = category || "";
+      const normalizedTransactionType = transaction_type || "";
+      const key = `${normalizedPaymentMethod}\u0000${normalizedCategory}\u0000${normalizedTransactionType}`;
+      const existing = entriesByKey.get(key);
+
+      if (existing) {
+        existing.amount += parsedAmount;
+      } else {
+        entriesByKey.set(key, {
+          description,
+          amount: parsedAmount,
+          date,
+          payment_method: normalizedPaymentMethod,
+          category: normalizedCategory,
+          transaction_type: normalizedTransactionType,
+        });
+      }
+
+      return entriesByKey;
+    }, new Map()).values());
+
+    const savedTransactions = await sequelize.transaction(async (dbTransaction) => {
+      const saved = [];
+
+      for (const entry of mergedTransactions) {
+        const { description, amount, date, payment_method, category, transaction_type } = entry;
+        const match = {
+          LedgerId: ledger.id,
+          payment_method,
+          category,
+          transaction_type,
+        };
+
+        const [transaction, created] = await Transaction.findOrCreate({
+          where: match,
+          defaults: {
+            ...match,
+            description,
+            amount,
+            date,
+          },
+          transaction: dbTransaction,
+        });
+
+        if (!created) {
+          transaction.description = description;
+          transaction.amount = amount;
+          transaction.date = date;
+          await transaction.save({ transaction: dbTransaction });
+        }
+
+        saved.push(transaction);
+      }
+
+      return saved;
+    });
+
+    res.json({ data: savedTransactions });
+  } catch (e) {
+    console.error('POST /api/ledgers/:ledgerId/transactions/bulk error', e);
+    res.status(e.status || 500).json({ error: e.status ? e.message : 'Could not save transactions' });
   }
 });
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '../../Utilities/api';
 
-function Register({ onRegister }) {
+function Register() {
   const [email, setEmail] = useState('');
   const [organisation, setOrganisation] = useState('');
   const [password, setPassword] = useState('');
@@ -65,9 +65,6 @@ function Register({ onRegister }) {
 
       localStorage.removeItem('authToken');
       localStorage.removeItem('authUser');
-      if (typeof onRegister === 'function') {
-        onRegister(null);
-      }
       setLoading(false);
       navigate('/login', {
         state: {

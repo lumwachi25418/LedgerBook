@@ -59,8 +59,10 @@ export const apiFetch = async (path, opts = {}) => {
   }
 
   if (!res.ok) {
-    const error = body?.error || `Request failed (${res.status})`;
-    throw new Error(error);
+    const error = new Error(body?.error || `Request failed (${res.status})`);
+    error.status = res.status;
+    error.body = body;
+    throw error;
   }
   return body;
 };
@@ -70,9 +72,18 @@ export const createLedger = (data) => apiFetch('/api/ledgers', { method: 'POST',
 export const updateLedger = (ledgerId, data) =>
   apiFetch(`/api/ledgers/${ledgerId}`, { method: 'PUT', body: JSON.stringify(data) });
 export const createTransaction = (ledgerId, data) => apiFetch(`/api/ledgers/${ledgerId}/transactions`, { method: 'POST', body: JSON.stringify(data) });
+export const saveLedgerTransactions = (ledgerId, transactions) =>
+  apiFetch(`/api/ledgers/${ledgerId}/transactions/bulk`, {
+    method: 'POST',
+    body: JSON.stringify({ transactions }),
+  });
 export const getLedgerTransactions = (ledgerId) => apiFetch(`/api/ledgers/${ledgerId}/transactions`);
 export const updateTransaction = (ledgerId, transactionId, data) =>
   apiFetch(`/api/ledgers/${ledgerId}/transactions/${transactionId}`, {
     method: 'PUT',
     body: JSON.stringify(data),
+  });
+export const deleteTransaction = (ledgerId, transactionId) =>
+  apiFetch(`/api/ledgers/${ledgerId}/transactions/${transactionId}`, {
+    method: 'DELETE',
   });

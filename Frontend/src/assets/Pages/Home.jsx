@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
-import { getLedgers, createLedger, createTransaction, updateTransaction } from "../../Utilities/api";
+import { getLedgers, createLedger, createTransaction, updateTransaction, saveLedgerTransactions } from "../../Utilities/api";
 
 const denominations = [1000, 500, 200, 100, 50, 40, 20, 10, 5];
 const defaultCategories = ["English Service", "Kiswahili Service", "Youth Service", "Sunday School", "Teens"];
-const bereavementCategories = ["Bereavement Cash", "Bereavement M-Pesa"];
 
 const typeOptions = [
   "offering",
@@ -14,6 +13,7 @@ const typeOptions = [
   "firstfruits"
 ];
 
+const initialRow = Object.fromEntries(denominations.map(d => [d, 0]));
 const formatKES = (n) =>
   new Intl.NumberFormat("en-KE", {
     style: "currency",
@@ -22,14 +22,10 @@ const formatKES = (n) =>
   }).format(n || 0);
 
 export default function LedgerApp() {
-  const initialRow = Object.fromEntries(denominations.map(d => [d, 0]));
-  const emptyTypes = Object.fromEntries(typeOptions.map(t => [t, 0]));
-
-  const [categories, setCategories] = useState([...defaultCategories, ...bereavementCategories]);
+  const [categories, setCategories] = useState([...defaultCategories]);
   const [newCategory, setNewCategory] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [dataByDate, setDataByDate] = useState({});
-  const [ledgers, setLedgers] = useState([]);
   const [activeLedger, setActiveLedger] = useState(null);
   const [backendStatus, setBackendStatus] = useState({ loading: false, error: '' });
   const cashEditable = true;
@@ -41,11 +37,9 @@ export default function LedgerApp() {
       const existing = (result?.data || []).find((l) => l.name === date);
       if (existing) {
         setActiveLedger(existing);
-        setLedgers(result.data);
       } else {
         const created = await createLedger({ name: date, description: `Ledger for ${date}` });
         setActiveLedger(created.data);
-        setLedgers([...(result?.data || []), created.data]);
       }
     } catch (err) {
       setBackendStatus({ loading: false, error: err.message });
@@ -59,24 +53,24 @@ export default function LedgerApp() {
   }, [selectedDate]);
 
   useEffect(() => {
-    if (!dataByDate[selectedDate]) {
+    setDataByDate((prev) => {
+      if (prev[selectedDate]) return prev;
+
       const initialData = Object.fromEntries(
         categories.map(cat => [
           cat,
           {
             cash: [{ category: cat, type: "offering", ...initialRow }],
-            mpesa: { ...emptyTypes },
-            cheque: { ...emptyTypes }
           }
         ])
       );
 
-      setDataByDate(prev => ({
+      return {
         ...prev,
         [selectedDate]: initialData
-      }));
-    }
-  }, [selectedDate]);
+      };
+    });
+  }, [categories, selectedDate]);
 
   const categoryData = dataByDate[selectedDate] || {};
   const isPastDate = selectedDate < new Date().toISOString().split("T")[0];
@@ -109,13 +103,6 @@ export default function LedgerApp() {
     setDataByDate({ ...dataByDate, [selectedDate]: updated });
   };
 
-  const handlePaymentChange = (cat, payment, type, value) => {
-    if (isPastDate || !categoryData[cat]) return;
-    const updated = { ...categoryData };
-    updated[cat][payment][type] = Number(value) || 0;
-    setDataByDate({ ...dataByDate, [selectedDate]: updated });
-  };
-
   const addCategory = () => {
     if (!newCategory.trim() || isPastDate) return;
 
@@ -124,8 +111,6 @@ export default function LedgerApp() {
     const updated = { ...categoryData };
     updated[newCategory] = {
       cash: [{ category: newCategory, type: "offering", ...initialRow }],
-      mpesa: { ...emptyTypes },
-      cheque: { ...emptyTypes }
     };
 
     setDataByDate({ ...dataByDate, [selectedDate]: updated });
@@ -154,13 +139,7 @@ export default function LedgerApp() {
     return calculateCashTotal(cat);
   };
 
-  // Separate totals for bereavement categories
-  const bereavementCashTotal = calculateCategoryTotal("Bereavement Cash");
-  const bereavementMpesaTotal = calculateCategoryTotal("Bereavement M-Pesa");
-  
-  // Grand total excludes bereavement (shown separately)
-  const regularCategories = categories.filter(c => !bereavementCategories.includes(c));
-  const grandTotal = regularCategories.reduce((sum, cat) => sum + calculateCategoryTotal(cat), 0);
+  const grandTotal = categories.reduce((sum, cat) => sum + calculateCategoryTotal(cat), 0);
 
   const buildTransactionPayloads = () => {
     const payloads = [];
@@ -183,25 +162,27 @@ export default function LedgerApp() {
         });
       });
 
-      ["mpesa", "cheque"].forEach((paymentMethod) => {
-        Object.entries(data[paymentMethod] || {}).forEach(([type, value]) => {
-          const amount = Number(value) || 0;
-
-          if (amount <= 0) return;
-
-          payloads.push({
-            description: `${cat} ${paymentMethod} - ${type}`,
-            amount,
-            date: selectedDate,
-            payment_method: paymentMethod,
-            category: cat,
-            transaction_type: type,
-          });
-        });
-      });
     });
 
     return payloads;
+  };
+
+  const saveTransactionsOneByOne = async (entries) => {
+    const existingTransactions = activeLedger?.Transactions || [];
+
+    for (const tx of entries) {
+      const existing = existingTransactions.find((item) =>
+        item.payment_method === tx.payment_method &&
+        item.category === tx.category &&
+        item.transaction_type === tx.transaction_type
+      );
+
+      if (existing) {
+        await updateTransaction(activeLedger.id, existing.id, tx);
+      } else {
+        await createTransaction(activeLedger.id, tx);
+      }
+    }
   };
 
   const saveToBackend = async () => {
@@ -213,22 +194,12 @@ export default function LedgerApp() {
     setBackendStatus({ loading: true, error: '' });
 
     try {
-      const existingTransactions = activeLedger?.Transactions || [];
-
-      for (const tx of entries) {
-        const existing = existingTransactions.find((item) =>
-          item.payment_method === tx.payment_method &&
-          item.category === tx.category &&
-          item.transaction_type === tx.transaction_type
-        );
-
-        if (existing) {
-          await updateTransaction(activeLedger.id, existing.id, tx);
-        } else {
-          await createTransaction(activeLedger.id, tx);
-        }
+      try {
+        await saveLedgerTransactions(activeLedger.id, entries);
+      } catch (err) {
+        if (err.status !== 404) throw err;
+        await saveTransactionsOneByOne(entries);
       }
-
       await initializeLedger(selectedDate);
 
     } catch (err) {
