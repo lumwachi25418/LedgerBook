@@ -9,7 +9,9 @@ const User = sequelize.define('User', {
   passwordHash: { type: DataTypes.STRING, allowNull: false },
 }, { timestamps: true });
 
-User.belongsTo(Organization, { foreignKey: { allowNull: true }, onDelete: 'CASCADE' });
-Organization.hasMany(User);
+User.belongsTo(Organization, { foreignKey: {
+  name: 'organizationId',
+  allowNull: true }, onDelete: 'CASCADE' });
+Organization.hasMany(User, { foreignKey: 'organizationId' });
 
 module.exports = User;

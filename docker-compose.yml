@@ -1,6 +1,21 @@
 version: '3.9'
 
 services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: ledgerbook-postgres
+    environment:
+      - POSTGRES_DB=ledgerbook
+      - POSTGRES_USER=ledgerbook
+      - POSTGRES_PASSWORD=ledgerbook_dev_password
+    volumes:
+      - ledgerbook-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledgerbook -d ledgerbook"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./Backend
@@ -11,12 +26,12 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DB_DIALECT=sqlite
-      - DATABASE_STORAGE=/data/ledgerbook.sqlite
-      - JWT_SECRET=supersecret
-    volumes:
-      - ./Backend:/app
-      - ledgerbook-data:/data
+      - DATABASE_URL=postgres://ledgerbook:ledgerbook_dev_password@postgres:5432/ledgerbook
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET before running docker-compose}
+      - CORS_ORIGIN=http://localhost:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   frontend:
     build:
@@ -32,4 +47,4 @@ services:
       - backend
 
 volumes:
-  ledgerbook-data:
+  ledgerbook-postgres-data:

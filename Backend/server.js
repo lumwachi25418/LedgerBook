@@ -18,6 +18,11 @@ const authenticate = require('./middleware/auth');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+const isProduction = process.env.NODE_ENV === 'production';
+const allowedOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 if (!process.env.JWT_SECRET) {
   console.error('Missing JWT_SECRET in environment. The server will not start.');
@@ -25,8 +30,15 @@ if (!process.env.JWT_SECRET) {
 }
 
 app.use(helmet());
-app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (!isProduction && allowedOrigins.length === 0) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  },
+}));
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '1mb' }));
 
 const apiLimiter = rateLimit({
   windowMs: 1000 * 60,
@@ -35,6 +47,14 @@ const apiLimiter = rateLimit({
 });
 
 app.use('/api', apiLimiter);
+
+const authLimiter = rateLimit({
+  windowMs: 1000 * 60 * 15,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many authentication attempts, please try again later.' },
+});
 
 const ensureLegacySchemaCompatibility = async () => {
   const queryInterface = sequelize.getQueryInterface();
@@ -69,6 +89,9 @@ app.get('/', (req, res) => res.json({ message: 'Ledgerbook backend is running' }
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 // Auth
+app.use('/auth/login', authLimiter);
+app.use('/auth/register', authLimiter);
+
 app.post('/auth/register', async (req, res) => {
   try {
     const email = req.body?.email?.trim().toLowerCase();
@@ -122,10 +145,15 @@ app.post('/auth/register', async (req, res) => {
   }
 });
 
-app.get('/admin/users', async (req, res) => {
+app.get('/admin/users', authenticate, async (req, res) => {
+  if (process.env.ENABLE_ADMIN_USERS !== 'true') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
   try {
     const users = await User.findAll({
         attributes: ['id', 'email', 'createdAt', 'organizationId'],
+        where: { organizationId: req.organizationId },
         include: [{ model: Organization, attributes: ['id', 'name'] }],
     });
     res.json({ data: users });
@@ -185,9 +213,14 @@ app.get('/auth/me', authenticate, (req, res) => {
 });
 
 // ====================== REPORT ROUTES ======================
+app.use('/api/reports', authenticate);
+
 app.get("/api/reports", async (req, res) => {
   try {
-    const reports = await Report.findAll({ order: [["createdAt", "DESC"]] });
+    const reports = await Report.findAll({
+      where: { organizationId: req.organizationId },
+      order: [["createdAt", "DESC"]],
+    });
     res.json({ data: reports });
   } catch (err) {
     console.error("GET /api/reports error", err);
@@ -200,7 +233,7 @@ app.post("/api/reports", async (req, res) => {
     const { name, date, file } = req.body;
     if (!name || !date || !file) return res.status(400).json({ error: "name, date, and file are required" });
 
-    const report = await Report.create({ name, date, file });
+    const report = await Report.create({ name, date, file, organizationId: req.organizationId });
     res.status(201).json({ data: report });
   } catch (err) {
     console.error("POST /api/reports error", err);
@@ -211,7 +244,7 @@ app.post("/api/reports", async (req, res) => {
 app.delete("/api/reports/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const report = await Report.findByPk(id);
+    const report = await Report.findOne({ where: { id, organizationId: req.organizationId } });
     if (!report) return res.status(404).json({ error: "Report not found" });
 
     await report.destroy();
@@ -512,13 +545,16 @@ const ensureOrganizationIds = async () => {
 
 (async () => {
   try {
-    await sequelize.sync();
-    await ensureLegacySchemaCompatibility();
-    await ensureOrganizationIds();
+    await sequelize.authenticate();
+    if (!isProduction) {
+      await sequelize.sync();
+      await ensureLegacySchemaCompatibility();
+      await ensureOrganizationIds();
+    }
     app.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`));
   } catch (err) {
     console.error('Start failed:', err);
-    if (process.env.NODE_ENV !== 'production') {
+    if (!isProduction) {
       console.log('Attempting a schema sync fallback for local development');
       try {
         await sequelize.sync({ alter: true });

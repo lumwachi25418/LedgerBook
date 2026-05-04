@@ -4,7 +4,7 @@ const Ledger = require('./Ledger');
 
 const Transaction = sequelize.define("Transaction", {
   description:      { type: DataTypes.STRING },
-  amount:           { type: DataTypes.FLOAT },
+  amount:           { type: DataTypes.DECIMAL(12, 2) },
   date:             { type: DataTypes.STRING },
   payment_method:   { type: DataTypes.STRING, defaultValue: "cash" },
   category:         { type: DataTypes.STRING, defaultValue: "" },

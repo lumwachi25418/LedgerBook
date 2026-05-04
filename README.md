@@ -1,6 +1,6 @@
 # Ledgerbook (Church Ledger)
 
-Full-stack ledger app (React + Express + Sequelize + SQLite/PostgreSQL) with multi-tenant support.
+Full-stack ledger app (React + Express + Sequelize + PostgreSQL) with multi-tenant support.
 
 ## Features
 - User registration and login with JWT
@@ -12,9 +12,10 @@ Full-stack ledger app (React + Express + Sequelize + SQLite/PostgreSQL) with mul
 
 ## Quick start (local)
 
-1. Copy environment file:
-   - `cp .env.example .env`
-   - Edit secrets in `.env`, especially `JWT_SECRET`.
+1. Copy environment files:
+   - `cp Backend/.env.example Backend/.env`
+   - `cp Frontend/.env.example Frontend/.env`
+   - Edit secrets in `Backend/.env`, especially `JWT_SECRET`.
 
 2. Backend
    - `cd Backend`
@@ -32,10 +33,15 @@ Full-stack ledger app (React + Express + Sequelize + SQLite/PostgreSQL) with mul
 
 ## Docker
 
-`docker-compose up --build`
+1. Set a secret:
+   - `export JWT_SECRET="$(openssl rand -hex 32)"`
+
+2. Start the stack:
+   - `docker-compose up --build`
 
 - Backend at `localhost:3000`
-- Frontend at `localhost:5173` (proxy to backend)
+- Frontend at `localhost:5173`
+- PostgreSQL runs inside Docker and persists in the `ledgerbook-postgres-data` volume.
 
 ## API Endpoints
 
@@ -53,6 +59,8 @@ Full-stack ledger app (React + Express + Sequelize + SQLite/PostgreSQL) with mul
 - `DELETE /api/ledgers/:ledgerId/transactions/:transactionId`
 
 ## Notes
-- For production, set `NODE_ENV=production` and use PostgreSQL with `DATABASE_URL`.
+- For production, set `NODE_ENV=production`, `DATABASE_URL`, `JWT_SECRET`, and `CORS_ORIGIN`.
+- Run migrations before serving traffic: `cd Backend && npm run start:production`.
 - Keep `JWT_SECRET` confidential.
-- Add tests and continuous integration for release.
+- `ENABLE_ADMIN_USERS=true` exposes the authenticated organization-scoped `/admin/users` endpoint; keep it unset unless needed.
+- Add continuous integration before release.

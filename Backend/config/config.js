@@ -1,7 +1,13 @@
 require('dotenv').config();
+const preferStablePostgresSockets = require('../lib/postgresNetwork');
+
+preferStablePostgresSockets();
 
 const dbUrl = process.env.DATABASE_URL;
 const dialect = process.env.DB_DIALECT || 'postgres';
+const ssl = process.env.DB_SSL === 'true'
+  ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
+  : false;
 
 module.exports = {
   development: dbUrl ? {
@@ -9,7 +15,7 @@ module.exports = {
     dialect,
     logging: false,
     dialectOptions: {
-      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+      ssl,
     },
   } : {
     dialect: 'sqlite',
@@ -26,11 +32,11 @@ module.exports = {
     dialect,
     logging: false,
     dialectOptions: {
-      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+      ssl,
     },
   } : {
-    dialect: 'sqlite',
-    storage: process.env.DATABASE_STORAGE || 'ledgerbook.sqlite',
-    logging: false,
+    dialect: (() => {
+      throw new Error('DATABASE_URL is required in production');
+    })(),
   },
 };
