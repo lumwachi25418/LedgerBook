@@ -12,6 +12,27 @@ const typeOptions = [
   "Bearevement",
   "firstfruits"
 ];
+const typeLabels = {
+  offering: "Offering",
+  tithes: "Tithe",
+  pillar: "Pillar",
+  Thanksgiving: "Thanksgiving",
+  Bearevement: "Bereavement",
+  firstfruits: "Firstfruits",
+};
+
+const normalizeCategory = (value = "") => {
+  const trimmed = String(value).trim();
+  const lower = trimmed.toLowerCase();
+
+  if (lower === "english service") return "English Service";
+  if (lower === "kiswahili service") return "Kiswahili Service";
+  if (lower === "youth service") return "Youth Service";
+  if (lower === "sunday school") return "Sunday School";
+  if (lower === "teens") return "Teens";
+
+  return trimmed;
+};
 
 const initialRow = Object.fromEntries(denominations.map(d => [d, 0]));
 const formatKES = (n) =>
@@ -28,6 +49,9 @@ export default function LedgerApp() {
   const [dataByDate, setDataByDate] = useState({});
   const [activeLedger, setActiveLedger] = useState(null);
   const [backendStatus, setBackendStatus] = useState({ loading: false, error: '' });
+  const [specialEventsByDate, setSpecialEventsByDate] = useState({});
+  const [newEventName, setNewEventName] = useState("");
+  const [newGivingTypeInput, setNewGivingTypeInput] = useState({});
   const cashEditable = true;
 
   const initializeLedger = async (date) => {
@@ -70,6 +94,14 @@ export default function LedgerApp() {
         [selectedDate]: initialData
       };
     });
+
+    setSpecialEventsByDate((prev) => {
+      if (prev[selectedDate]) return prev;
+      return {
+        ...prev,
+        [selectedDate]: [],
+      };
+    });
   }, [categories, selectedDate]);
 
   const categoryData = dataByDate[selectedDate] || {};
@@ -106,11 +138,17 @@ export default function LedgerApp() {
   const addCategory = () => {
     if (!newCategory.trim() || isPastDate) return;
 
-    setCategories([...categories, newCategory]);
+    const normalizedCategory = normalizeCategory(newCategory);
+    if (categories.includes(normalizedCategory)) {
+      setNewCategory("");
+      return;
+    }
+
+    setCategories([...categories, normalizedCategory]);
 
     const updated = { ...categoryData };
-    updated[newCategory] = {
-      cash: [{ category: newCategory, type: "offering", ...initialRow }],
+    updated[normalizedCategory] = {
+      cash: [{ category: normalizedCategory, type: "offering", ...initialRow }],
     };
 
     setDataByDate({ ...dataByDate, [selectedDate]: updated });
@@ -128,8 +166,116 @@ export default function LedgerApp() {
     setDataByDate({ ...dataByDate, [selectedDate]: updated });
   };
 
+  const specialEvents = specialEventsByDate[selectedDate] || [];
+
+  const addSpecialEvent = () => {
+    if (!cashEditable || isPastDate || !newEventName.trim()) return;
+    const updated = { ...specialEventsByDate };
+    updated[selectedDate] = [
+      ...specialEvents,
+      {
+        eventType: newEventName.trim(),
+        customTypes: [],
+        rows: [{ type: "offering", ...initialRow }],
+      },
+    ];
+    setSpecialEventsByDate(updated);
+    setNewEventName("");
+  };
+
+  const removeSpecialEvent = (index) => {
+    if (!cashEditable || isPastDate) return;
+    const updated = { ...specialEventsByDate };
+    updated[selectedDate] = specialEvents.filter((_, i) => i !== index);
+    setSpecialEventsByDate(updated);
+  };
+
+  const addSpecialEventRow = (eventIndex) => {
+    if (!cashEditable || isPastDate) return;
+    const updatedEvents = [...specialEvents];
+    updatedEvents[eventIndex] = {
+      ...updatedEvents[eventIndex],
+      rows: [
+        ...updatedEvents[eventIndex].rows,
+        { type: "offering", ...initialRow },
+      ],
+    };
+    setSpecialEventsByDate({ ...specialEventsByDate, [selectedDate]: updatedEvents });
+  };
+
+  const removeSpecialEventRow = (eventIndex, rowIndex) => {
+    if (!cashEditable || isPastDate) return;
+    const updatedEvents = [...specialEvents];
+    updatedEvents[eventIndex] = {
+      ...updatedEvents[eventIndex],
+      rows: updatedEvents[eventIndex].rows.filter((_, i) => i !== rowIndex),
+    };
+    setSpecialEventsByDate({ ...specialEventsByDate, [selectedDate]: updatedEvents });
+  };
+
+  const updateSpecialEventField = (index, field, value) => {
+    if (!cashEditable || isPastDate) return;
+    const updatedEvents = [...specialEvents];
+    updatedEvents[index] = {
+      ...updatedEvents[index],
+      [field]: value,
+    };
+    setSpecialEventsByDate({ ...specialEventsByDate, [selectedDate]: updatedEvents });
+  };
+
+  const updateSpecialEventRowField = (eventIndex, rowIndex, field, value) => {
+    if (!cashEditable || isPastDate) return;
+    const updatedEvents = [...specialEvents];
+    const updatedRows = [...updatedEvents[eventIndex].rows];
+    updatedRows[rowIndex] = {
+      ...updatedRows[rowIndex],
+      [field]: value,
+    };
+    updatedEvents[eventIndex] = {
+      ...updatedEvents[eventIndex],
+      rows: updatedRows,
+    };
+    setSpecialEventsByDate({ ...specialEventsByDate, [selectedDate]: updatedEvents });
+  };
+
+  const addCustomGivingType = (eventIndex) => {
+    if (!cashEditable || isPastDate) return;
+    const inputKey = `event_${eventIndex}`;
+    const customType = newGivingTypeInput[inputKey]?.trim();
+    
+    if (!customType) return;
+
+    const updatedEvents = [...specialEvents];
+    const customTypes = updatedEvents[eventIndex].customTypes || [];
+    
+    if (!customTypes.includes(customType)) {
+      updatedEvents[eventIndex] = {
+        ...updatedEvents[eventIndex],
+        customTypes: [...customTypes, customType],
+      };
+      setSpecialEventsByDate({ ...specialEventsByDate, [selectedDate]: updatedEvents });
+      setNewGivingTypeInput({ ...newGivingTypeInput, [inputKey]: "" });
+    }
+  };
+
+  const removeCustomGivingType = (eventIndex, typeToRemove) => {
+    if (!cashEditable || isPastDate) return;
+    const updatedEvents = [...specialEvents];
+    updatedEvents[eventIndex] = {
+      ...updatedEvents[eventIndex],
+      customTypes: (updatedEvents[eventIndex].customTypes || []).filter(t => t !== typeToRemove),
+    };
+    setSpecialEventsByDate({ ...specialEventsByDate, [selectedDate]: updatedEvents });
+  };
+
   const calculateRowTotal = (row) =>
     denominations.reduce((sum, d) => sum + ((row?.[d] || 0) * d), 0);
+
+  const calculateSpecialEventTotal = (event) =>
+    (event.rows || []).reduce((eventSum, row) => eventSum + calculateRowTotal(row), 0);
+
+  const calculateSpecialEventsSubtotal = () =>
+    specialEvents.reduce((sum, event) => sum + calculateSpecialEventTotal(event), 0);
 
   const calculateCashTotal = (cat) =>
     (categoryData[cat]?.cash || []).reduce((sum, row) => sum + calculateRowTotal(row), 0);
@@ -139,12 +285,14 @@ export default function LedgerApp() {
     return calculateCashTotal(cat);
   };
 
-  const grandTotal = categories.reduce((sum, cat) => sum + calculateCategoryTotal(cat), 0);
+  const specialEventsSubtotal = calculateSpecialEventsSubtotal();
+  const grandTotal = categories.reduce((sum, cat) => sum + calculateCategoryTotal(cat), 0) + specialEventsSubtotal;
 
   const buildTransactionPayloads = () => {
     const payloads = [];
 
     categories.forEach((cat) => {
+      const normalizedCategory = normalizeCategory(cat);
       const data = categoryData[cat];
       if (!data) return;
 
@@ -153,15 +301,31 @@ export default function LedgerApp() {
         if (amount <= 0) return;
 
         payloads.push({
-          description: `${cat} cash - ${row.type}`,
+          description: `${normalizedCategory} cash - ${row.type}`,
           amount,
           date: selectedDate,
           payment_method: "cash",
-          category: cat,
+          category: normalizedCategory,
           transaction_type: row.type,
         });
       });
+    });
 
+    specialEvents.forEach((event) => {
+      (event.rows || []).forEach((row) => {
+        const amount = calculateRowTotal(row);
+        if (amount <= 0) return;
+
+        payloads.push({
+          description: `${event.eventType || 'Special Event'} ${row.type}`.trim(),
+          amount,
+          date: selectedDate,
+          payment_method: "cash",
+          category: "Special Event",
+          transaction_type: row.type,
+          event_type: event.eventType?.trim() || null,
+        });
+      });
     });
 
     return payloads;
@@ -173,8 +337,9 @@ export default function LedgerApp() {
     for (const tx of entries) {
       const existing = existingTransactions.find((item) =>
         item.payment_method === tx.payment_method &&
-        item.category === tx.category &&
-        item.transaction_type === tx.transaction_type
+        normalizeCategory(item.category) === tx.category &&
+        item.transaction_type === tx.transaction_type &&
+        (item.event_type || null) === (tx.event_type || null)
       );
 
       if (existing) {
@@ -225,8 +390,188 @@ export default function LedgerApp() {
         </div>
 
         <div className="max-w-md mx-auto mb-6 flex gap-2">
-          <input value={newCategory} onChange={e => setNewCategory(e.target.value)} className="flex-1 p-2 border rounded"/>
+          <input value={newCategory} onChange={e => setNewCategory(e.target.value)} className="flex-1 p-2 border rounded" placeholder="Add category..."/>
           <button onClick={addCategory} className="bg-amber-600 text-white px-4 rounded">Add</button>
+        </div>
+
+        <div className="max-w-6xl mx-auto mb-6 bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-lg shadow-md border-2 border-indigo-200">
+          <h2 className="text-lg font-bold text-indigo-900 mb-4 flex items-center gap-2">
+            ✨ Special Event Collections
+          </h2>
+          <p className="text-sm text-indigo-700 mb-4">Add special events (Choir Day, Mothering Sunday, Wedding, etc.) and track their collections separately.</p>
+          
+          {/* Event Input Section */}
+          <div className="bg-white p-4 rounded-lg border border-indigo-200 mb-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={newEventName}
+                  onChange={(e) => setNewEventName(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && addSpecialEvent()}
+                  className="w-full p-3 border-2 border-indigo-200 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+                  placeholder="Enter event name (e.g., Choir Day, Mothering Sunday, Wedding)"
+                  disabled={!cashEditable || isPastDate}
+                />
+              </div>
+              <button
+                onClick={addSpecialEvent}
+                disabled={!cashEditable || isPastDate || !newEventName.trim()}
+                className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 whitespace-nowrap shadow-md"
+              >
+                ➕ Save Event
+              </button>
+            </div>
+          </div>
+
+          {specialEvents.length > 0 ? (
+            <div className="mt-6 space-y-6">
+              <div className="text-sm font-semibold text-indigo-800 mb-3">📋 Added Events: {specialEvents.length}</div>
+              {specialEvents.map((event, eventIndex) => (
+                <div key={eventIndex} className="border-2 border-indigo-200 rounded-lg p-5 bg-white shadow-sm hover:shadow-md transition">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-indigo-900 flex items-center gap-2">
+                        🎯 {event.eventType || "Unnamed Event"}
+                      </h3>
+                      <p className="text-xs text-indigo-600 mt-1">Event total: <span className="font-semibold">{formatKES(calculateSpecialEventTotal(event))}</span></p>
+                    </div>
+                    <button
+                      onClick={() => removeSpecialEvent(eventIndex)}
+                      className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg disabled:opacity-50 transition font-medium"
+                      disabled={!cashEditable || isPastDate}
+                    >
+                      🗑️ Remove
+                    </button>
+                  </div>
+
+                  {/* Custom Giving Types Section */}
+                  <div className="mb-4 p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                    <h4 className="text-sm font-semibold text-indigo-900 mb-3">Add Custom Giving Types</h4>
+                    <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                      <input
+                        type="text"
+                        value={newGivingTypeInput[`event_${eventIndex}`] || ""}
+                        onChange={(e) => setNewGivingTypeInput({
+                          ...newGivingTypeInput,
+                          [`event_${eventIndex}`]: e.target.value
+                        })}
+                        onKeyPress={(e) => e.key === 'Enter' && addCustomGivingType(eventIndex)}
+                        className="flex-1 p-2 border-2 border-indigo-200 rounded focus:outline-none focus:border-indigo-500"
+                        placeholder="e.g., Building Fund, Missions, Emergency Relief"
+                        disabled={!cashEditable || isPastDate}
+                      />
+                      <button
+                        onClick={() => addCustomGivingType(eventIndex)}
+                        disabled={!cashEditable || isPastDate || !(newGivingTypeInput[`event_${eventIndex}`] || "").trim()}
+                        className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium transition disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
+                      >
+                        ➕ Add Type
+                      </button>
+                    </div>
+                    
+                    {/* Display Custom Types */}
+                    {event.customTypes && event.customTypes.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {event.customTypes.map((customType) => (
+                          <div key={customType} className="bg-white border-2 border-green-300 rounded-full px-3 py-1 flex items-center gap-2 text-sm">
+                            <span className="text-indigo-700 font-semibold">{customType}</span>
+                            <button
+                              onClick={() => removeCustomGivingType(eventIndex, customType)}
+                              className="text-red-500 hover:text-red-700 font-bold"
+                              disabled={!cashEditable || isPastDate}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-center border text-sm">
+                      <thead className="bg-gray-800 text-white">
+                        <tr>
+                          <th>Type</th>
+                          {denominations.map(d => <th key={d}>{d}</th>)}
+                          <th>Total</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(event.rows || []).map((row, rowIndex) => (
+                          <tr key={rowIndex}>
+                            <td>
+                              <select
+                                value={row.type}
+                                onChange={(e) => updateSpecialEventRowField(eventIndex, rowIndex, 'type', e.target.value)}
+                                className="border p-1 rounded w-full"
+                                disabled={!cashEditable || isPastDate}
+                              >
+                                <optgroup label="Standard Types">
+                                  {typeOptions.map(type => (
+                                    <option key={type} value={type}>{typeLabels[type] || type}</option>
+                                  ))}
+                                </optgroup>
+                                {(event.customTypes && event.customTypes.length > 0) && (
+                                  <optgroup label="Custom Types">
+                                    {event.customTypes.map(customType => (
+                                      <option key={customType} value={customType}>{customType}</option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                              </select>
+                            </td>
+                            {denominations.map(d => (
+                              <td key={d}>
+                                <input
+                                  type="number"
+                                  value={row[d]}
+                                  onChange={(e) => updateSpecialEventRowField(eventIndex, rowIndex, d, Number(e.target.value) || 0)}
+                                  className="w-full text-center border rounded"
+                                  readOnly={!cashEditable || isPastDate}
+                                />
+                              </td>
+                            ))}
+                            <td>{formatKES(calculateRowTotal(row))}</td>
+                            <td>
+                              <button
+                                onClick={() => removeSpecialEventRow(eventIndex, rowIndex)}
+                                className="text-red-500"
+                                disabled={!cashEditable || isPastDate}
+                              >
+                                ✕
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <button
+                      onClick={() => addSpecialEventRow(eventIndex)}
+                      disabled={!cashEditable || isPastDate}
+                      className="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-lg disabled:opacity-50 transition font-medium flex items-center gap-2"
+                    >
+                      ➕ Add Row
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              <div className="text-right font-bold text-lg text-indigo-900 bg-gradient-to-r from-indigo-100 to-blue-100 p-4 rounded-lg border-2 border-indigo-200">
+                Total from All Events: {formatKES(specialEventsSubtotal)}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-6 p-4 bg-indigo-100 border-2 border-dashed border-indigo-300 rounded-lg text-center">
+              <p className="text-indigo-700 font-medium">📝 No special events yet.</p>
+              <p className="text-sm text-indigo-600">Enter an event name above and click "Save Event" to begin.</p>
+            </div>
+          )}
         </div>
 
         <div className="space-y-6 max-w-6xl mx-auto">
@@ -272,7 +617,7 @@ export default function LedgerApp() {
                             disabled={!cashEditable || isPastDate}
                           >
                             {typeOptions.map(type => (
-                              <option key={type} value={type}>{type}</option>
+                              <option key={type} value={type}>{typeLabels[type] || type}</option>
                             ))}
                           </select>
                         </td>

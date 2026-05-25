@@ -363,7 +363,7 @@ app.post('/api/ledgers/:ledgerId/transactions/bulk', async (req, res) => {
     }
 
     const mergedTransactions = Array.from(transactions.reduce((entriesByKey, entry) => {
-      const { description, amount, date, payment_method, category, transaction_type } = entry;
+      const { description, amount, date, payment_method, category, transaction_type, event_type } = entry;
       if (!description || amount === undefined || !date) {
         const error = new Error('description, amount, and date are required for every transaction');
         error.status = 400;
@@ -380,7 +380,8 @@ app.post('/api/ledgers/:ledgerId/transactions/bulk', async (req, res) => {
       const normalizedPaymentMethod = payment_method || "cash";
       const normalizedCategory = category || "";
       const normalizedTransactionType = transaction_type || "";
-      const key = `${normalizedPaymentMethod}\u0000${normalizedCategory}\u0000${normalizedTransactionType}`;
+      const normalizedEventType = event_type || null;
+      const key = `${normalizedPaymentMethod}\u0000${normalizedCategory}\u0000${normalizedTransactionType}\u0000${normalizedEventType}`;
       const existing = entriesByKey.get(key);
 
       if (existing) {
@@ -393,6 +394,7 @@ app.post('/api/ledgers/:ledgerId/transactions/bulk', async (req, res) => {
           payment_method: normalizedPaymentMethod,
           category: normalizedCategory,
           transaction_type: normalizedTransactionType,
+          event_type: normalizedEventType,
         });
       }
 
@@ -403,12 +405,13 @@ app.post('/api/ledgers/:ledgerId/transactions/bulk', async (req, res) => {
       const saved = [];
 
       for (const entry of mergedTransactions) {
-        const { description, amount, date, payment_method, category, transaction_type } = entry;
+        const { description, amount, date, payment_method, category, transaction_type, event_type } = entry;
         const match = {
           LedgerId: ledger.id,
           payment_method,
           category,
           transaction_type,
+          event_type,
         };
 
         const [transaction, created] = await Transaction.findOrCreate({

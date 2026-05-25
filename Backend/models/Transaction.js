@@ -9,6 +9,7 @@ const Transaction = sequelize.define("Transaction", {
   payment_method:   { type: DataTypes.STRING, defaultValue: "cash" },
   category:         { type: DataTypes.STRING, defaultValue: "" },
   transaction_type: { type: DataTypes.STRING, defaultValue: "" },
+  event_type:       { type: DataTypes.STRING, allowNull: true },
 });
 
 Transaction.belongsTo(Ledger, { foreignKey: { allowNull: false }, onDelete: 'CASCADE' });

@@ -12,8 +12,54 @@ import {
 
 const defaultCategories = ["English Service", "Kiswahili Service", "Youth Service", "Sunday School", "Teens"];
 const typeOptions = ["offering", "tithes", "pillar", "Thanksgiving", "Bearevement", "firstfruits"];
+const typeLabels = {
+  offering: "Offering",
+  tithes: "Tithe",
+  pillar: "Pillar",
+  Thanksgiving: "Thanksgiving",
+  Bearevement: "Bereavement",
+  firstfruits: "Firstfruits",
+};
 const electronicMethods = ["mpesa", "cheque"];
 const electronicCategory = "Electronic Giving";
+
+const normalizePaymentMethod = (value = "") => {
+  const normalized = String(value).trim().toLowerCase().replace(/[\s_-]/g, "");
+
+  if (normalized === "mpesa") return "mpesa";
+  if (normalized === "cheque" || normalized === "check") return "cheque";
+
+  return normalized;
+};
+
+const normalizeCategory = (value = "") => {
+  const trimmed = String(value).trim();
+  const lower = trimmed.toLowerCase();
+
+  if (lower === "english service") return "English Service";
+  if (lower === "kiswahili service") return "Kiswahili Service";
+  if (lower === "youth service") return "Youth Service";
+  if (lower === "sunday school") return "Sunday School";
+  if (lower === "teens") return "Teens";
+
+  return trimmed;
+};
+
+const normalizeTransactionType = (value = "") => {
+  const trimmed = String(value).trim();
+  const lower = trimmed.toLowerCase();
+
+  if (lower === "offering") return "offering";
+  if (lower === "tithes") return "tithes";
+  if (lower === "pillar") return "pillar";
+  if (lower === "thanksgiving") return "Thanksgiving";
+  if (lower === "bearevement" || lower === "bereavement") return "Bearevement";
+  if (lower === "firstfruits") return "firstfruits";
+
+  return trimmed;
+};
+
+const getTypeLabel = (type) => typeLabels[type] || type;
 
 const formatCurrency = (amount) =>
   new Intl.NumberFormat("en-KE", {
@@ -21,6 +67,9 @@ const formatCurrency = (amount) =>
     currency: "KES",
     maximumFractionDigits: 0,
   }).format(Number(amount) || 0);
+
+const formatOptionalCurrency = (amount) =>
+  amount === null || amount === undefined ? "" : formatCurrency(amount);
 
 const formatDate = (value) => {
   if (!value) return "No date";
@@ -36,31 +85,74 @@ const formatDate = (value) => {
 };
 
 const getTransactionKey = (paymentMethod, type) =>
-  `${paymentMethod}::${type}`;
+  `${normalizePaymentMethod(paymentMethod)}::${normalizeTransactionType(type)}`;
+
+const parseTransactionKey = (key) => {
+  const parts = key.split("::");
+
+  if (parts.length === 2) {
+    const [paymentMethod, type] = parts;
+    return { paymentMethod, type };
+  }
+
+  const [, paymentMethod, type] = parts;
+  return { paymentMethod, type };
+};
+
+const getRecordCategories = (savedRows = []) => {
+  const savedCategories = Array.from(
+    new Set(savedRows.map((row) => normalizeCategory(row.category)).filter(Boolean))
+  );
+
+  return [
+    ...defaultCategories.filter((cat) => savedCategories.includes(cat)),
+    ...savedCategories.filter((cat) => !defaultCategories.includes(cat)),
+  ];
+};
+
+const getElectronicTypes = (transactions = [], values = {}) => {
+  const types = new Set(typeOptions);
+
+  transactions.forEach((transaction) => {
+    if (!electronicMethods.includes(normalizePaymentMethod(transaction.payment_method))) return;
+    const type = normalizeTransactionType(transaction.transaction_type);
+    if (type) types.add(type);
+  });
+
+  Object.keys(values).forEach((key) => {
+    const { paymentMethod, type } = parseTransactionKey(key);
+    if (!electronicMethods.includes(normalizePaymentMethod(paymentMethod))) return;
+    if (type) types.add(type);
+  });
+
+  return Array.from(types);
+};
 
 const getCashRows = (transactions) => {
   const rowMap = new Map();
 
   transactions.forEach((transaction) => {
+    const category = normalizeCategory(transaction.category);
     if (
-      transaction.payment_method !== "cash" ||
-      !transaction.category ||
-      transaction.category === "Bereavement Cash" ||
-      transaction.category === "Bereavement M-Pesa" ||
-      transaction.category === electronicCategory
+      normalizePaymentMethod(transaction.payment_method) !== "cash" ||
+      !category ||
+      category === "Bereavement Cash" ||
+      category === "Bereavement M-Pesa" ||
+      category === electronicCategory ||
+      transaction.event_type
     ) {
       return;
     }
 
-    const type = transaction.transaction_type || "offering";
-    const key = `${transaction.category}::${type}`;
+    const type = normalizeTransactionType(transaction.transaction_type) || "offering";
+    const key = `${category}::${type}`;
     const existing = rowMap.get(key);
 
     if (existing) {
       existing.amount += Number(transaction.amount) || 0;
     } else {
       rowMap.set(key, {
-        category: transaction.category,
+        category,
         type,
         amount: Number(transaction.amount) || 0,
       });
@@ -78,13 +170,86 @@ const buildElectronicState = (transactions) => {
   const values = {};
 
   transactions.forEach((transaction) => {
-    if (!electronicMethods.includes(transaction.payment_method)) return;
+    const paymentMethod = normalizePaymentMethod(transaction.payment_method);
 
-    const key = getTransactionKey(transaction.payment_method, transaction.transaction_type || "");
+    if (!electronicMethods.includes(paymentMethod)) return;
+    if (transaction.event_type) return;
+
+    const key = getTransactionKey(paymentMethod, transaction.transaction_type || "");
     values[key] = (Number(values[key]) || 0) + (Number(transaction.amount) || 0);
   });
 
   return values;
+};
+
+const getCashRowsSpecialEvents = (transactions) => {
+  const rowMap = new Map();
+
+  transactions.forEach((transaction) => {
+    if (!transaction.event_type) return;
+    
+    if (normalizePaymentMethod(transaction.payment_method) !== "cash") {
+      return;
+    }
+
+    const eventType = String(transaction.event_type).trim();
+    const type = normalizeTransactionType(transaction.transaction_type) || "offering";
+    const key = `${eventType}::${type}`;
+    const existing = rowMap.get(key);
+
+    if (existing) {
+      existing.amount += Number(transaction.amount) || 0;
+    } else {
+      rowMap.set(key, {
+        eventType,
+        type,
+        amount: Number(transaction.amount) || 0,
+      });
+    }
+  });
+
+  return Array.from(rowMap.values());
+};
+
+const getElectronicSpecialEvents = (transactions = []) => {
+  const eventMap = new Map();
+
+  transactions.forEach((transaction) => {
+    if (!transaction.event_type) return;
+
+    const paymentMethod = normalizePaymentMethod(transaction.payment_method);
+    if (!electronicMethods.includes(paymentMethod)) return;
+
+    const eventType = String(transaction.event_type).trim();
+    const type = normalizeTransactionType(transaction.transaction_type) || "offering";
+    const key = `${eventType}::${paymentMethod}::${type}`;
+    const existing = eventMap.get(key);
+
+    if (existing) {
+      existing.amount += Number(transaction.amount) || 0;
+    } else {
+      eventMap.set(key, {
+        eventType,
+        paymentMethod,
+        type,
+        amount: Number(transaction.amount) || 0,
+      });
+    }
+  });
+
+  return Array.from(eventMap.values());
+};
+
+const getElectronicValues = (transactions, values = {}) => {
+  const savedValues = buildElectronicState(transactions);
+  const nextValues = { ...savedValues };
+
+  Object.entries(values || {}).forEach(([key, value]) => {
+    if (value === "" || value === null || value === undefined) return;
+    nextValues[key] = value;
+  });
+
+  return nextValues;
 };
 
 export default function Records() {
@@ -147,11 +312,15 @@ export default function Records() {
 
   const getDisplayCashRows = (transactions) => {
     const savedRows = getCashRows(transactions);
+    const rowByKey = new Map(
+      savedRows.map((row) => [`${row.category}::${row.type}`, row])
+    );
+    const categories = getRecordCategories(savedRows);
 
-    if (savedRows.length > 0) return savedRows;
-
-    return defaultCategories.flatMap((category) =>
-      typeOptions.map((type) => ({ category, type, amount: 0 }))
+    return categories.flatMap((category) =>
+      typeOptions.map((type) => (
+        rowByKey.get(`${category}::${type}`) || { category, type, amount: null }
+      ))
     );
   };
 
@@ -176,9 +345,9 @@ export default function Records() {
       electronicMethods.forEach((paymentMethod) => {
         const amount = Number(values[getTransactionKey(paymentMethod, type)]) || 0;
         const existing = transactions.some((transaction) =>
-          transaction.payment_method === paymentMethod &&
+          normalizePaymentMethod(transaction.payment_method) === paymentMethod &&
           transaction.category === electronicCategory &&
-          transaction.transaction_type === type
+          normalizeTransactionType(transaction.transaction_type) === type
         );
 
         if (amount <= 0 && !existing) return;
@@ -202,9 +371,9 @@ export default function Records() {
 
     for (const tx of entries) {
       const existing = existingTransactions.find((item) =>
-        item.payment_method === tx.payment_method &&
+        normalizePaymentMethod(item.payment_method) === tx.payment_method &&
         item.category === tx.category &&
-        item.transaction_type === tx.transaction_type
+        normalizeTransactionType(item.transaction_type) === tx.transaction_type
       );
 
       if (existing) {
@@ -217,7 +386,7 @@ export default function Records() {
 
   const deleteLegacyElectronicTransactions = async (ledger) => {
     const legacyTransactions = (ledger.Transactions || []).filter((transaction) =>
-      electronicMethods.includes(transaction.payment_method) &&
+      electronicMethods.includes(normalizePaymentMethod(transaction.payment_method)) &&
       transaction.category !== electronicCategory
     );
 
@@ -258,16 +427,14 @@ export default function Records() {
 
   const downloadPdf = (ledger) => {
     const transactions = ledger.Transactions || [];
-    const cashRows = getCashRows(transactions);
-    const values = entryValues[ledger.id] || buildElectronicState(transactions);
+    const cashRows = getDisplayCashRows(transactions).filter((row) => Number(row.amount) > 0);
+    const values = getElectronicValues(transactions, entryValues[ledger.id]);
     const rows = [];
 
     cashRows.forEach((cashRow) => {
-      if (cashRow.amount <= 0) return;
-
       rows.push([
         cashRow.category,
-        cashRow.type,
+        getTypeLabel(cashRow.type),
         formatCurrency(cashRow.amount),
         "",
         "",
@@ -275,7 +442,7 @@ export default function Records() {
       ]);
     });
 
-    typeOptions.forEach((type) => {
+    getElectronicTypes(transactions, values).forEach((type) => {
       const mpesa = Number(values[getTransactionKey("mpesa", type)]) || 0;
       const cheque = Number(values[getTransactionKey("cheque", type)]) || 0;
       const total = mpesa + cheque;
@@ -284,7 +451,7 @@ export default function Records() {
 
       rows.push([
         "Electronic totals",
-        type,
+        getTypeLabel(type),
         "",
         formatCurrency(mpesa),
         formatCurrency(cheque),
@@ -297,6 +464,11 @@ export default function Records() {
       return sum + (Number(raw) || 0);
     }, 0);
 
+    // Special Events Section
+    const specialEventsCashRows = getCashRowsSpecialEvents(transactions).filter((row) => Number(row.amount) > 0);
+    const specialEventsElectronic = getElectronicSpecialEvents(transactions);
+
+    let specialEventsStartY = 46;
     const doc = new jsPDF();
     doc.setFontSize(16);
     doc.text("Church Ledger Record", 14, 18);
@@ -313,7 +485,62 @@ export default function Records() {
       styles: { fontSize: 8 },
       headStyles: { fillColor: [31, 41, 55] },
       footStyles: { fillColor: [245, 158, 11], textColor: [17, 24, 39] },
+      didDrawPage: (data) => {
+        specialEventsStartY = data.lastAutoTable.finalY + 10;
+      },
     });
+
+    // Add Special Events section if there are any
+    if (specialEventsCashRows.length > 0 || specialEventsElectronic.length > 0) {
+      doc.setFontSize(12);
+      doc.text("Special Events Collections", 14, specialEventsStartY);
+
+      const specialEventsRows = [];
+
+      specialEventsCashRows.forEach((row) => {
+        specialEventsRows.push([
+          row.eventType,
+          getTypeLabel(row.type),
+          formatCurrency(row.amount),
+          "",
+          "",
+          formatCurrency(row.amount),
+        ]);
+      });
+
+      specialEventsElectronic.forEach((row) => {
+        const total = Number(row.amount) || 0;
+        if (total <= 0) return;
+
+        const cash = row.paymentMethod === "cash" ? formatCurrency(row.amount) : "";
+        const mpesa = row.paymentMethod === "mpesa" ? formatCurrency(row.amount) : "";
+        const cheque = row.paymentMethod === "cheque" ? formatCurrency(row.amount) : "";
+
+        specialEventsRows.push([
+          row.eventType,
+          getTypeLabel(row.type),
+          cash,
+          mpesa,
+          cheque,
+          formatCurrency(row.amount),
+        ]);
+      });
+
+      const specialEventsTotal = specialEventsRows.reduce((sum, row) => {
+        const raw = row[5].replace(/[^\d.-]/g, "");
+        return sum + (Number(raw) || 0);
+      }, 0);
+
+      autoTable(doc, {
+        startY: specialEventsStartY + 6,
+        head: [["Event Type", "Type", "Cash", "M-Pesa", "Cheque", "Total"]],
+        body: specialEventsRows,
+        foot: [["", "", "", "", "Subtotal", formatCurrency(specialEventsTotal)]],
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [59, 130, 246] },
+        footStyles: { fillColor: [191, 219, 254], textColor: [30, 64, 175] },
+      });
+    }
 
     doc.save(`ledger-${ledger.name}.pdf`);
   };
@@ -341,15 +568,14 @@ export default function Records() {
         {filteredLedgers.map((ledger) => {
           const transactions = ledger.Transactions || [];
           const cashRows = getDisplayCashRows(transactions);
-          const values = entryValues[ledger.id] || {};
+          const values = getElectronicValues(transactions, entryValues[ledger.id]);
           const readOnly = Boolean(ledger.isFinalized);
           const visibleCashTotal = cashRows.reduce(
-            (sum, cashRow) => sum + cashRow.amount,
+            (sum, cashRow) => sum + (Number(cashRow.amount) || 0),
             0
           );
-          const electronicDraftTotal = typeOptions.reduce(
-            (sum, type) =>
-              sum +
+          const electronicDraftTotal = getElectronicTypes(transactions, values).reduce(
+            (sum, type) => sum +
               (Number(values[getTransactionKey("mpesa", type)]) || 0) +
               (Number(values[getTransactionKey("cheque", type)]) || 0),
             0
@@ -418,9 +644,9 @@ export default function Records() {
                     {cashRows.map((cashRow) => (
                       <tr key={`${cashRow.category}-${cashRow.type}`} className="border-t">
                         <td className="p-2 font-medium text-gray-800">{cashRow.category}</td>
-                        <td className="p-2 text-gray-600">{cashRow.type}</td>
-                        <td className="p-2 text-right">{formatCurrency(cashRow.amount)}</td>
-                        <td className="p-2 text-right font-semibold">{formatCurrency(cashRow.amount)}</td>
+                        <td className="p-2 text-gray-600">{getTypeLabel(cashRow.type)}</td>
+                        <td className="p-2 text-right">{formatOptionalCurrency(cashRow.amount)}</td>
+                        <td className="p-2 text-right font-semibold">{formatOptionalCurrency(cashRow.amount)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -431,7 +657,7 @@ export default function Records() {
                 <table className="w-full min-w-[560px] text-sm text-left">
                   <thead className="bg-gray-800 text-white">
                     <tr>
-                      <th className="p-2">Electronic Giving Type</th>
+                      <th className="p-2">Giving Type</th>
                       <th className="p-2 text-right">M-Pesa Total</th>
                       <th className="p-2 text-right">Cheque Total</th>
                       <th className="p-2 text-right">Total</th>
@@ -446,7 +672,7 @@ export default function Records() {
 
                       return (
                         <tr key={type} className="border-t">
-                          <td className="p-2 font-medium text-gray-800">{type}</td>
+                          <td className="p-2 font-medium text-gray-800">{getTypeLabel(type)}</td>
                           <td className="p-2">
                             <input
                               type="number"
