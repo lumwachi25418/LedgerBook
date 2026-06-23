@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Router from "./assets/Components/Router";
+import { apiFetch } from "./Utilities/api";
 
 const normalizeUser = (user) => {
   if (!user) return null;
@@ -27,6 +28,7 @@ export default function App() {
         return {
           isLoggedIn: true,
           currentUser: parsedUser,
+          checkingAuth: true,
         };
       } catch {
         localStorage.removeItem("authToken");
@@ -37,10 +39,48 @@ export default function App() {
     return {
       isLoggedIn: false,
       currentUser: null,
+      checkingAuth: Boolean(token),
     };
   });
 
-  const { isLoggedIn, currentUser } = authState;
+  const { isLoggedIn, currentUser, checkingAuth } = authState;
+
+  useEffect(() => {
+    const token = localStorage.getItem("authToken");
+
+    if (!token) return;
+
+    let cancelled = false;
+    setAuthState((prev) => ({ ...prev, checkingAuth: true }));
+
+    apiFetch("/auth/me")
+      .then((response) => {
+        if (cancelled) return;
+        const verifiedUser = normalizeUser(response?.data?.user);
+        if (!verifiedUser) throw new Error("Invalid user session.");
+
+        localStorage.setItem("authUser", JSON.stringify(verifiedUser));
+        setAuthState({
+          isLoggedIn: true,
+          currentUser: verifiedUser,
+          checkingAuth: false,
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        localStorage.removeItem("authToken");
+        localStorage.removeItem("authUser");
+        setAuthState({
+          isLoggedIn: false,
+          currentUser: null,
+          checkingAuth: false,
+        });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const updateUser = (user) => {
     const normalizedUser = normalizeUser(user);
@@ -53,6 +93,7 @@ export default function App() {
     setAuthState((prev) => ({
       ...prev,
       currentUser: normalizedUser,
+      checkingAuth: false,
     }));
   };
 
@@ -62,9 +103,18 @@ export default function App() {
     setAuthState({
       isLoggedIn: false,
       currentUser: null,
+      checkingAuth: false,
     });
     window.location.href = "/login";
   };
 
-  return <Router isLoggedIn={isLoggedIn} setIsLoggedIn={(value) => setAuthState((prev) => ({ ...prev, isLoggedIn: value }))} currentUser={currentUser} setCurrentUser={updateUser} logout={logout} />;
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100 text-gray-700">
+        Checking your session...
+      </div>
+    );
+  }
+
+  return <Router isLoggedIn={isLoggedIn} setIsLoggedIn={(value) => setAuthState((prev) => ({ ...prev, isLoggedIn: value, checkingAuth: false }))} currentUser={currentUser} setCurrentUser={updateUser} logout={logout} />;
 }

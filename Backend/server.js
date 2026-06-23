@@ -260,7 +260,11 @@ app.use('/api/ledgers', authenticate);
 
 app.get('/api/ledgers', async (req, res) => {
   try {
-    const ledgers = await Ledger.findAll({ where: { organizationId: req.organizationId }, include: [Transaction] });
+    const ledgers = await Ledger.findAll({
+      where: { organizationId: req.organizationId },
+      include: [Transaction],
+      order: [['createdAt', 'DESC']],
+    });
     res.json({ data: ledgers });
   } catch (e) {
     console.error('GET /api/ledgers error', e);
@@ -276,8 +280,17 @@ app.post('/api/ledgers', async (req, res) => {
     const orgId = req.organizationId || req.user.organizationId;
     if (!orgId) return res.status(400).json({ error: 'OrganizationId missing for ledger creation' });
 
-    const ledger = await Ledger.create({ name, description, UserId: req.user.id, organizationId: orgId });
-    res.status(201).json({ data: ledger });
+    const [ledger, created] = await Ledger.findOrCreate({
+      where: { name, organizationId: orgId },
+      defaults: { name, description, UserId: req.user.id, organizationId: orgId },
+    });
+
+    if (!created && description !== undefined && !ledger.description) {
+      ledger.description = description;
+      await ledger.save();
+    }
+
+    res.status(created ? 201 : 200).json({ data: ledger });
   } catch (e) {
     console.error('POST /api/ledgers error', e);
     res.status(500).json({ error: 'Could not create ledger' });
@@ -452,7 +465,7 @@ app.post('/api/ledgers/:ledgerId/transactions', async (req, res) => {
     if (!ledger) return res.status(404).json({ error: 'Ledger not found' });
     if (ledger.isFinalized) return res.status(403).json({ error: 'Finalized ledgers are read-only' });
 
-    const { description, amount, date, payment_method, category, transaction_type } = req.body;
+    const { description, amount, date, payment_method, category, transaction_type, event_type } = req.body;
     if (!description || amount === undefined || !date) {
       return res.status(400).json({ error: 'description, amount, and date are required' });
     }
@@ -470,6 +483,7 @@ app.post('/api/ledgers/:ledgerId/transactions', async (req, res) => {
       payment_method: payment_method || "cash",
       category: category || "",
       transaction_type: transaction_type || "",
+      event_type: event_type || null,
     });
     res.status(201).json({ data: transaction });
   } catch (e) {
@@ -490,7 +504,7 @@ app.put('/api/ledgers/:ledgerId/transactions/:transactionId', async (req, res) =
     const transaction = await Transaction.findOne({ where: { id: txId, LedgerId: ledger.id } });
     if (!transaction) return res.status(404).json({ error: 'Transaction not found' });
 
-    const { description, amount, date, payment_method, category, transaction_type } = req.body;
+    const { description, amount, date, payment_method, category, transaction_type, event_type } = req.body;
     if (description !== undefined) transaction.description = description;
     if (amount !== undefined) {
       const parsedAmount = parseTransactionAmount(amount);
@@ -503,6 +517,7 @@ app.put('/api/ledgers/:ledgerId/transactions/:transactionId', async (req, res) =
     if (payment_method !== undefined) transaction.payment_method = payment_method;
     if (category !== undefined) transaction.category = category;
     if (transaction_type !== undefined) transaction.transaction_type = transaction_type;
+    if (event_type !== undefined) transaction.event_type = event_type || null;
     await transaction.save();
 
     res.json({ data: transaction });

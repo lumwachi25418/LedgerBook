@@ -42,6 +42,17 @@ const formatKES = (n) =>
     maximumFractionDigits: 0,
   }).format(n || 0);
 
+const selectLedgerForDate = (ledgers = [], date) => {
+  const matches = ledgers.filter((ledger) => ledger.name === date);
+
+  return matches.sort((a, b) => {
+    const aTransactions = a.Transactions?.length || 0;
+    const bTransactions = b.Transactions?.length || 0;
+    if (aTransactions !== bTransactions) return bTransactions - aTransactions;
+    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  })[0] || null;
+};
+
 export default function LedgerApp() {
   const [categories, setCategories] = useState([...defaultCategories]);
   const [newCategory, setNewCategory] = useState("");
@@ -52,19 +63,14 @@ export default function LedgerApp() {
   const [specialEventsByDate, setSpecialEventsByDate] = useState({});
   const [newEventName, setNewEventName] = useState("");
   const [newGivingTypeInput, setNewGivingTypeInput] = useState({});
+  const [serviceGivingTypesByCategory, setServiceGivingTypesByCategory] = useState({});
   const cashEditable = true;
 
   const initializeLedger = async (date) => {
     setBackendStatus({ loading: true, error: '' });
     try {
       const result = await getLedgers();
-      const existing = (result?.data || []).find((l) => l.name === date);
-      if (existing) {
-        setActiveLedger(existing);
-      } else {
-        const created = await createLedger({ name: date, description: `Ledger for ${date}` });
-        setActiveLedger(created.data);
-      }
+      setActiveLedger(selectLedgerForDate(result?.data || [], date));
     } catch (err) {
       setBackendStatus({ loading: false, error: err.message });
     } finally {
@@ -213,16 +219,6 @@ export default function LedgerApp() {
     setSpecialEventsByDate({ ...specialEventsByDate, [selectedDate]: updatedEvents });
   };
 
-  const updateSpecialEventField = (index, field, value) => {
-    if (!cashEditable || isPastDate) return;
-    const updatedEvents = [...specialEvents];
-    updatedEvents[index] = {
-      ...updatedEvents[index],
-      [field]: value,
-    };
-    setSpecialEventsByDate({ ...specialEventsByDate, [selectedDate]: updatedEvents });
-  };
-
   const updateSpecialEventRowField = (eventIndex, rowIndex, field, value) => {
     if (!cashEditable || isPastDate) return;
     const updatedEvents = [...specialEvents];
@@ -266,6 +262,41 @@ export default function LedgerApp() {
       customTypes: (updatedEvents[eventIndex].customTypes || []).filter(t => t !== typeToRemove),
     };
     setSpecialEventsByDate({ ...specialEventsByDate, [selectedDate]: updatedEvents });
+  };
+
+  const addCustomServiceGivingType = (cat) => {
+    if (!cashEditable || isPastDate) return;
+
+    const inputKey = `service_${cat}`;
+    const customType = newGivingTypeInput[inputKey]?.trim();
+
+    if (!customType) return;
+
+    const existingTypes = serviceGivingTypesByCategory[cat] || [];
+    const normalizedStandardTypes = typeOptions.map((type) => type.toLowerCase());
+    const alreadyExists =
+      existingTypes.some((type) => type.toLowerCase() === customType.toLowerCase()) ||
+      normalizedStandardTypes.includes(customType.toLowerCase());
+
+    if (alreadyExists) {
+      setNewGivingTypeInput({ ...newGivingTypeInput, [inputKey]: "" });
+      return;
+    }
+
+    setServiceGivingTypesByCategory({
+      ...serviceGivingTypesByCategory,
+      [cat]: [...existingTypes, customType],
+    });
+    setNewGivingTypeInput({ ...newGivingTypeInput, [inputKey]: "" });
+  };
+
+  const removeCustomServiceGivingType = (cat, typeToRemove) => {
+    if (!cashEditable || isPastDate) return;
+
+    setServiceGivingTypesByCategory({
+      ...serviceGivingTypesByCategory,
+      [cat]: (serviceGivingTypesByCategory[cat] || []).filter((type) => type !== typeToRemove),
+    });
   };
 
   const calculateRowTotal = (row) =>
@@ -331,8 +362,8 @@ export default function LedgerApp() {
     return payloads;
   };
 
-  const saveTransactionsOneByOne = async (entries) => {
-    const existingTransactions = activeLedger?.Transactions || [];
+  const saveTransactionsOneByOne = async (entries, ledger = activeLedger) => {
+    const existingTransactions = ledger?.Transactions || [];
 
     for (const tx of entries) {
       const existing = existingTransactions.find((item) =>
@@ -343,27 +374,44 @@ export default function LedgerApp() {
       );
 
       if (existing) {
-        await updateTransaction(activeLedger.id, existing.id, tx);
+        await updateTransaction(ledger.id, existing.id, tx);
       } else {
-        await createTransaction(activeLedger.id, tx);
+        await createTransaction(ledger.id, tx);
       }
     }
   };
 
-  const saveToBackend = async () => {
-    if (!activeLedger?.id) return;
+  const getOrCreateLedgerForDate = async () => {
+    const result = await getLedgers();
+    const existing = selectLedgerForDate(result?.data || [], selectedDate);
 
+    if (existing) {
+      setActiveLedger(existing);
+      return existing;
+    }
+
+    const created = await createLedger({ name: selectedDate, description: `Ledger for ${selectedDate}` });
+    setActiveLedger(created.data);
+    return created.data;
+  };
+
+  const saveToBackend = async () => {
     const entries = buildTransactionPayloads();
-    if (entries.length === 0) return;
+    if (entries.length === 0) {
+      setBackendStatus({ loading: false, error: 'Enter at least one amount before saving.' });
+      return;
+    }
 
     setBackendStatus({ loading: true, error: '' });
 
     try {
+      const ledger = activeLedger?.id ? activeLedger : await getOrCreateLedgerForDate();
+
       try {
-        await saveLedgerTransactions(activeLedger.id, entries);
+        await saveLedgerTransactions(ledger.id, entries);
       } catch (err) {
         if (err.status !== 404) throw err;
-        await saveTransactionsOneByOne(entries);
+        await saveTransactionsOneByOne(entries, ledger);
       }
       await initializeLedger(selectedDate);
 
@@ -577,6 +625,8 @@ export default function LedgerApp() {
         <div className="space-y-6 max-w-6xl mx-auto">
           {categories.map(cat => {
             const showControls = cashEditable && !["Sunday School", "Teens"].includes(cat);
+            const serviceCustomTypes = serviceGivingTypesByCategory[cat] || [];
+            const serviceInputKey = `service_${cat}`;
 
             return (
               <div key={cat} className="bg-white p-4 rounded shadow">
@@ -593,10 +643,52 @@ export default function LedgerApp() {
                     <button onClick={() => deleteCategory(cat)} className="bg-red-500 text-white px-2 py-1 rounded">
                       ✕
                     </button>
-                  </div>
-                </div>
+	                  </div>
+	                </div>
 
-                <table className="w-full text-center border text-sm">
+	                <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
+	                  <h3 className="text-sm font-semibold text-amber-900 mb-3">Add Custom Giving Type</h3>
+	                  <div className="flex flex-col sm:flex-row gap-2 mb-3">
+	                    <input
+	                      type="text"
+	                      value={newGivingTypeInput[serviceInputKey] || ""}
+	                      onChange={(e) => setNewGivingTypeInput({
+	                        ...newGivingTypeInput,
+	                        [serviceInputKey]: e.target.value
+	                      })}
+	                      onKeyPress={(e) => e.key === 'Enter' && addCustomServiceGivingType(cat)}
+	                      className="flex-1 p-2 border-2 border-amber-200 rounded focus:outline-none focus:border-amber-500"
+	                      placeholder="e.g., Building Fund, Missions, Emergency Relief"
+	                      disabled={!cashEditable || isPastDate}
+	                    />
+	                    <button
+	                      onClick={() => addCustomServiceGivingType(cat)}
+	                      disabled={!cashEditable || isPastDate || !(newGivingTypeInput[serviceInputKey] || "").trim()}
+	                      className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium transition disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
+	                    >
+	                      ➕ Add Type
+	                    </button>
+	                  </div>
+
+	                  {serviceCustomTypes.length > 0 && (
+	                    <div className="flex flex-wrap gap-2">
+	                      {serviceCustomTypes.map((customType) => (
+	                        <div key={customType} className="bg-white border-2 border-green-300 rounded-full px-3 py-1 flex items-center gap-2 text-sm">
+	                          <span className="text-amber-800 font-semibold">{customType}</span>
+	                          <button
+	                            onClick={() => removeCustomServiceGivingType(cat, customType)}
+	                            className="text-red-500 hover:text-red-700 font-bold"
+	                            disabled={!cashEditable || isPastDate}
+	                          >
+	                            ✕
+	                          </button>
+	                        </div>
+	                      ))}
+	                    </div>
+	                  )}
+	                </div>
+	
+	                <table className="w-full text-center border text-sm">
                   <thead className="bg-gray-800 text-white">
                     <tr>
                       <th>Type</th>
@@ -614,12 +706,21 @@ export default function LedgerApp() {
                             value={row.type}
                             onChange={e => handleTypeChange(cat, idx, e.target.value)}
                             className="border p-1 disabled:bg-gray-100 disabled:text-gray-500"
-                            disabled={!cashEditable || isPastDate}
-                          >
-                            {typeOptions.map(type => (
-                              <option key={type} value={type}>{typeLabels[type] || type}</option>
-                            ))}
-                          </select>
+	                            disabled={!cashEditable || isPastDate}
+	                          >
+	                            <optgroup label="Standard Types">
+	                              {typeOptions.map(type => (
+	                                <option key={type} value={type}>{typeLabels[type] || type}</option>
+	                              ))}
+	                            </optgroup>
+	                            {serviceCustomTypes.length > 0 && (
+	                              <optgroup label="Custom Types">
+	                                {serviceCustomTypes.map(customType => (
+	                                  <option key={customType} value={customType}>{customType}</option>
+	                                ))}
+	                              </optgroup>
+	                            )}
+	                          </select>
                         </td>
 
                         {denominations.map(d => (

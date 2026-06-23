@@ -24,7 +24,7 @@ export default function Nav({ logout, currentUser }) {
   };
 
   return (
-    <nav className="bg-gradient-to-r from-amber-800 via-amber-700 to-amber-900 text-white shadow-2xl sticky top-0 z-50 border-b-4 border-amber-600">
+    <nav className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-gray-200 shadow-2xl sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
 
         {/* Logo */}
@@ -105,7 +105,7 @@ export default function Nav({ logout, currentUser }) {
 
       {/* Mobile & Tablet Menu */}
       {open && (
-        <div className="md:hidden bg-gradient-to-b from-amber-800 to-amber-900 px-4 pb-4 space-y-3 text-sm border-t border-amber-600 shadow-lg">
+        <div className="md:hidden bg-gradient-to-b from-gray-900 to-gray-800 px-4 pb-4 space-y-3 text-sm border-t border-gray-700 shadow-lg">
 
           <Link
             to="/"

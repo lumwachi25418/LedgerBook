@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE } from '../../Utilities/api';
 
-function Register() {
+function Register({ onRegister }) {
   const [email, setEmail] = useState('');
   const [organisation, setOrganisation] = useState('');
   const [password, setPassword] = useState('');
@@ -63,15 +63,12 @@ function Register() {
         return;
       }
 
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('authUser');
+      const userInfo = payload?.data?.user || { email: normalizedEmail };
+      localStorage.setItem('authToken', token);
+      localStorage.setItem('authUser', JSON.stringify(userInfo));
+      onRegister?.(userInfo);
       setLoading(false);
-      navigate('/login', {
-        state: {
-          registered: true,
-          email: normalizedEmail,
-        },
-      });
+      navigate('/');
     } catch (err) {
       setError(`Network error while registering. Please try again. ${err?.message || ''}`.trim());
       setLoading(false);
@@ -141,7 +138,7 @@ function Register() {
         </form>
 
         <p className="text-center text-gray-500 text-sm mt-6">
-          Already have an account? <a href="/login" className="text-amber-600 hover:underline">Login here</a>
+          Already have an account? <Link to="/login" className="text-amber-600 hover:underline">Login here</Link>
         </p>
       </div>
     </div>

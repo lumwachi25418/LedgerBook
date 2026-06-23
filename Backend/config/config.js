@@ -5,9 +5,16 @@ preferStablePostgresSockets();
 
 const dbUrl = process.env.DATABASE_URL;
 const dialect = process.env.DB_DIALECT || 'postgres';
-const ssl = process.env.DB_SSL === 'true'
+const shouldUseSsl = process.env.DB_SSL === 'true';
+const ssl = shouldUseSsl
   ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
   : false;
+
+if (dbUrl && shouldUseSsl) {
+  const parsedUrl = new URL(dbUrl);
+  parsedUrl.searchParams.delete('sslmode');
+  process.env.DATABASE_URL = parsedUrl.toString();
+}
 
 module.exports = {
   development: dbUrl ? {

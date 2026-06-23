@@ -12,15 +12,26 @@ if (process.env.NODE_ENV === 'production' && !databaseUrl) {
   throw new Error('DATABASE_URL is required in production');
 }
 
+const shouldUseSsl = process.env.DB_SSL === 'true';
+const sslOptions = shouldUseSsl
+  ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
+  : false;
+
+const getConnectionString = (url) => {
+  if (!url || !shouldUseSsl) return url;
+
+  const parsedUrl = new URL(url);
+  parsedUrl.searchParams.delete('sslmode');
+  return parsedUrl.toString();
+};
+
 let sequelize;
 if (databaseUrl) {
-  sequelize = new Sequelize(databaseUrl, {
+  sequelize = new Sequelize(getConnectionString(databaseUrl), {
     dialect: 'postgres',
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
     dialectOptions: {
-      ssl: process.env.DB_SSL === 'true'
-        ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' }
-        : false,
+      ssl: sslOptions,
     },
   });
 } else {

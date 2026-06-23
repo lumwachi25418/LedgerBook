@@ -41,7 +41,7 @@ function Router({ isLoggedIn, setIsLoggedIn, currentUser, setCurrentUser, logout
           path="/register"
           element={
             !isLoggedIn ? (
-              <Register />
+              <Register onRegister={(user) => { setIsLoggedIn(true); setCurrentUser(user); }} />
             ) : <Navigate to="/" replace />
           }
         />

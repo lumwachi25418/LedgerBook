@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { API_BASE } from "../../Utilities/api";
 
 export default function Login({ onLogin }) {
@@ -151,7 +151,7 @@ export default function Login({ onLogin }) {
           >
             Login
           </button>
-          <p>Not a user? <a href="/register" className="text-amber-600 hover:underline">Register here</a></p>
+          <p>Not a user? <Link to="/register" className="text-amber-600 hover:underline">Register here</Link></p>
         </form>
 
         <p className="text-center text-gray-500 text-sm mt-6">
