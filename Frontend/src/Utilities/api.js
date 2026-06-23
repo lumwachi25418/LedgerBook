@@ -9,10 +9,14 @@ const normalizeApiBase = (rawBase) => {
   try {
     const url = new URL(base);
 
-    // Docker service names like "backend" are reachable from containers,
-    // but not from the user's browser on the host machine.
-    if (url.hostname === 'backend') {
-      url.hostname = window.location.hostname || 'localhost';
+    const pageHostname = window.location.hostname || 'localhost';
+    const pageIsLocalhost = pageHostname === 'localhost' || pageHostname === '127.0.0.1';
+    const apiIsLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+
+    // Docker service names and localhost are not reachable from another device's
+    // browser, so use the host that served the frontend during LAN testing.
+    if (url.hostname === 'backend' || (apiIsLocalhost && !pageIsLocalhost)) {
+      url.hostname = pageHostname;
     }
 
     return url.toString().replace(/\/$/, '');

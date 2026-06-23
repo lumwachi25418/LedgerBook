@@ -23,6 +23,7 @@ const allowedOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+const allowAnyOrigin = allowedOrigins.includes('*');
 
 if (!process.env.JWT_SECRET) {
   console.error('Missing JWT_SECRET in environment. The server will not start.');
@@ -33,6 +34,7 @@ app.use(helmet());
 app.use(cors({
   origin(origin, callback) {
     if (!origin) return callback(null, true);
+    if (allowAnyOrigin) return callback(null, true);
     if (!isProduction && allowedOrigins.length === 0) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
     return callback(new Error('Not allowed by CORS'));

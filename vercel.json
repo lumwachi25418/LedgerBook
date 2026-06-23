@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "cd Frontend && npm install",
-  "buildCommand": "cd Frontend && npm run build",
+  "buildCommand": "cd Frontend && VITE_API_URL=https://ledgerbook-backend.onrender.com npm run build",
   "outputDirectory": "Frontend/dist",
   "framework": "vite",
   "rewrites": [
