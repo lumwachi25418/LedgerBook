@@ -48,7 +48,8 @@ export const apiFetch = async (path, opts = {}) => {
   const url = `${API_BASE}${path}`;
   const optsWithAuth = getFetchOptions(opts);
 
-  const timeoutMs = typeof optsWithAuth.timeout === 'number' ? optsWithAuth.timeout : 10000;
+  //const timeoutMs = typeof optsWithAuth.timeout === 'number' ? optsWithAuth.timeout : 10000;
+  const timeoutMs = 60000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
