@@ -10,14 +10,13 @@ import {
   updateTransaction,
 } from "../../Utilities/api";
 
-const defaultCategories = ["English Service", "Kiswahili Service", "Youth Service", "Sunday School", "Teens"];
-const typeOptions = ["offering", "tithes", "pillar", "Thanksgiving", "Bearevement", "firstfruits"];
+const defaultCategories = ["English Service", "Kiswahili Service", "Youth Service", "Sunday School", "Teens", "Senior Citizen Service"];
+const typeOptions = ["offering", "tithes", "pillar", "Thanksgiving", "firstfruits"];
 const typeLabels = {
   offering: "Offering",
   tithes: "Tithe",
   pillar: "Pillar",
   Thanksgiving: "Thanksgiving",
-  Bearevement: "Bereavement",
   firstfruits: "Firstfruits",
 };
 const electronicMethods = ["mpesa", "cheque"];
@@ -41,6 +40,7 @@ const normalizeCategory = (value = "") => {
   if (lower === "youth service") return "Youth Service";
   if (lower === "sunday school") return "Sunday School";
   if (lower === "teens") return "Teens";
+  if (lower === "senior citizen service") return "Senior Citizen Service";
 
   return trimmed;
 };
@@ -53,13 +53,16 @@ const normalizeTransactionType = (value = "") => {
   if (lower === "tithes") return "tithes";
   if (lower === "pillar") return "pillar";
   if (lower === "thanksgiving") return "Thanksgiving";
-  if (lower === "bearevement" || lower === "bereavement") return "Bearevement";
+  if (lower === "bearevement" || lower === "bereavement") return "Bereavement";
   if (lower === "firstfruits") return "firstfruits";
 
   return trimmed;
 };
 
 const getTypeLabel = (type) => typeLabels[type] || type;
+
+const isStandardGivingType = (type = "") => typeOptions.includes(String(type).trim());
+const isCustomGivingType = (type = "") => Boolean(String(type || "").trim()) && !isStandardGivingType(type);
 
 const getTypeSortIndex = (type) => {
   const index = typeOptions.indexOf(type);
@@ -143,6 +146,7 @@ const getElectronicTypes = (transactions = [], values = {}) => {
 
 const getCashRows = (transactions) => {
   const rowMap = new Map();
+  const seen = new Set();
 
   transactions.forEach((transaction) => {
     const category = normalizeCategory(transaction.category);
@@ -159,17 +163,15 @@ const getCashRows = (transactions) => {
 
     const type = normalizeTransactionType(transaction.transaction_type) || "offering";
     const key = `${category}::${type}`;
-    const existing = rowMap.get(key);
-
-    if (existing) {
-      existing.amount += Number(transaction.amount) || 0;
-    } else {
-      rowMap.set(key, {
-        category,
-        type,
-        amount: Number(transaction.amount) || 0,
-      });
-    }
+    
+    if (seen.has(key)) return;
+    
+    seen.add(key);
+    rowMap.set(key, {
+      category,
+      type,
+      amount: Number(transaction.amount) || 0,
+    });
   });
 
   return Array.from(rowMap.values()).sort((a, b) => {
@@ -183,6 +185,7 @@ const getCashRows = (transactions) => {
 
 const buildElectronicState = (transactions) => {
   const values = {};
+  const seen = new Set();
 
   transactions.forEach((transaction) => {
     const paymentMethod = normalizePaymentMethod(transaction.payment_method);
@@ -191,6 +194,9 @@ const buildElectronicState = (transactions) => {
     if (transaction.event_type) return;
 
     const key = getTransactionKey(paymentMethod, transaction.transaction_type || "");
+    if (seen.has(key)) return;
+
+    seen.add(key);
     values[key] = (Number(values[key]) || 0) + (Number(transaction.amount) || 0);
   });
 
@@ -257,7 +263,8 @@ const getElectronicSpecialEvents = (transactions = []) => {
 
 const getElectronicValues = (transactions, values = {}) => {
   const savedValues = buildElectronicState(transactions);
-  const nextValues = { ...savedValues };
+  const categoryValues = buildCategoryElectronicState(transactions);
+  const nextValues = { ...savedValues, ...categoryValues };
 
   Object.entries(values || {}).forEach(([key, value]) => {
     if (value === "" || value === null || value === undefined) return;
@@ -269,6 +276,47 @@ const getElectronicValues = (transactions, values = {}) => {
 
 const sanitizePdfFileName = (value = "ledger") =>
   String(value).trim().replace(/[<>:"/\\|?*]/g, "-") || "ledger";
+
+const summarizeGivingTotals = (rows = []) => {
+  const normal = rows.reduce((sum, row) => {
+    const amount = Number(row?.amount) || 0;
+    return isCustomGivingType(row?.type) ? sum : sum + amount;
+  }, 0);
+
+  const custom = rows.reduce((sum, row) => {
+    const amount = Number(row?.amount) || 0;
+    return isCustomGivingType(row?.type) ? sum + amount : sum;
+  }, 0);
+
+  return { normal, custom, total: normal + custom };
+};
+
+const categorySpecificCategories = ["Youth Service", "Senior Citizen Service"];
+
+const getCategoryElectronicKey = (category, paymentMethod) =>
+  `category::${normalizeCategory(category)}::${normalizePaymentMethod(paymentMethod)}`;
+
+const buildCategoryElectronicState = (transactions) => {
+  const values = {};
+  const seen = new Set();
+
+  transactions.forEach((transaction) => {
+    const category = normalizeCategory(transaction.category);
+    const paymentMethod = normalizePaymentMethod(transaction.payment_method);
+
+    if (!categorySpecificCategories.includes(category)) return;
+    if (!electronicMethods.includes(paymentMethod)) return;
+    if (transaction.event_type) return;
+
+    const key = getCategoryElectronicKey(category, paymentMethod);
+    if (seen.has(key)) return;
+
+    seen.add(key);
+    values[key] = (Number(values[key]) || 0) + (Number(transaction.amount) || 0);
+  });
+
+  return values;
+};
 
 export default function Records() {
   const [ledgers, setLedgers] = useState([]);
@@ -292,9 +340,11 @@ export default function Records() {
 
         nextLedgers.forEach((ledger) => {
           const savedValues = buildElectronicState(ledger.Transactions || []);
+          const categoryValues = buildCategoryElectronicState(ledger.Transactions || []);
 
           next[ledger.id] = {
             ...savedValues,
+            ...categoryValues,
             ...(ledger.isFinalized ? {} : prev[ledger.id] || {}),
           };
         });
@@ -366,6 +416,21 @@ export default function Records() {
     }));
   };
 
+  const handleCategoryElectronicChange = (ledgerId, category, paymentMethod, value) => {
+    const ledger = ledgers.find((item) => item.id === ledgerId);
+    if (ledger?.isFinalized) return;
+
+    const key = getCategoryElectronicKey(category, paymentMethod);
+
+    setEntryValues((prev) => ({
+      ...prev,
+      [ledgerId]: {
+        ...(prev[ledgerId] || {}),
+        [key]: value,
+      },
+    }));
+  };
+
   const buildElectronicPayloads = (ledger) => {
     const values = entryValues[ledger.id] || {};
     const transactions = ledger.Transactions || [];
@@ -389,6 +454,30 @@ export default function Records() {
           payment_method: paymentMethod,
           category: electronicCategory,
           transaction_type: type,
+        });
+      });
+    });
+
+    // Add category-specific electronic givings
+    categorySpecificCategories.forEach((category) => {
+      electronicMethods.forEach((paymentMethod) => {
+        const key = getCategoryElectronicKey(category, paymentMethod);
+        const amount = Number(values[key]) || 0;
+        const existing = transactions.some((transaction) =>
+          normalizePaymentMethod(transaction.payment_method) === paymentMethod &&
+          normalizeCategory(transaction.category) === category &&
+          !transaction.event_type
+        );
+
+        if (amount <= 0 && !existing) return;
+
+        payloads.push({
+          description: `${category} ${paymentMethod} total`,
+          amount,
+          date: ledger.name,
+          payment_method: paymentMethod,
+          category: category,
+          transaction_type: "offering",
         });
       });
     });
@@ -494,10 +583,12 @@ export default function Records() {
       const raw = row[5].replace(/[^\d.-]/g, "");
       return sum + (Number(raw) || 0);
     }, 0);
+    const regularGivingSummary = summarizeGivingTotals(cashRows);
 
     // Special Events Section
     const specialEventsCashRows = getCashRowsSpecialEvents(transactions).filter((row) => Number(row.amount) > 0);
     const specialEventsElectronic = getElectronicSpecialEvents(transactions);
+    const specialEventsSummary = summarizeGivingTotals(specialEventsCashRows);
 
     const doc = new jsPDF();
     doc.setFontSize(16);
@@ -506,9 +597,12 @@ export default function Records() {
     doc.text(`Ledger: ${ledger.name}`, 14, 26);
     doc.text(`Created: ${formatDate(ledger.createdAt)}`, 14, 32);
     doc.text(`Status: ${ledger.isFinalized ? "Finalized" : "Draft"}`, 14, 38);
+    doc.text(`Normal Giving: ${formatCurrency(regularGivingSummary.normal)}`, 14, 44);
+    doc.text(`Custom Giving: ${formatCurrency(regularGivingSummary.custom)}`, 14, 50);
+    doc.text(`Grand Total: ${formatCurrency(grandTotal)}`, 14, 56);
 
     autoTable(doc, {
-      startY: 46,
+      startY: 64,
       head: [["Category", "Type", "Cash", "M-Pesa", "Cheque", "Total"]],
       body: rows,
       foot: [["", "", "", "", "Grand Total", formatCurrency(grandTotal)]],
@@ -533,6 +627,11 @@ export default function Records() {
 
       doc.setFontSize(12);
       doc.text("Special Events Collections", 14, specialEventsStartY);
+      doc.setFontSize(9);
+      doc.text(`Normal Giving: ${formatCurrency(specialEventsSummary.normal)}`, 14, specialEventsStartY + 6);
+      doc.text(`Custom Giving: ${formatCurrency(specialEventsSummary.custom)}`, 70, specialEventsStartY + 6);
+      doc.text(`Subtotal: ${formatCurrency(specialEventsTotal)}`, 130, specialEventsStartY + 6);
+      doc.setFontSize(8);
 
       const specialEventsRows = [];
 
@@ -571,7 +670,7 @@ export default function Records() {
       }, 0);
 
       autoTable(doc, {
-        startY: specialEventsStartY + 6,
+        startY: specialEventsStartY + 12,
         head: [["Event Type", "Type", "Cash", "M-Pesa", "Cheque", "Total"]],
         body: specialEventsRows,
         foot: [["", "", "", "", "Subtotal", formatCurrency(specialEventsTotal)]],
@@ -624,7 +723,11 @@ export default function Records() {
               (Number(values[getTransactionKey("mpesa", type)]) || 0) +
               (Number(values[getTransactionKey("cheque", type)]) || 0),
             0
-          );
+          ) + categorySpecificCategories.reduce((sum, category) => {
+            const mpesaKey = getCategoryElectronicKey(category, "mpesa");
+            const chequeKey = getCategoryElectronicKey(category, "cheque");
+            return sum + (Number(values[mpesaKey]) || 0) + (Number(values[chequeKey]) || 0);
+          }, 0);
           const totalAmount = visibleCashTotal + electronicDraftTotal + specialEventsTotal;
           const latestDate =
             transactions[transactions.length - 1]?.date ||
@@ -781,6 +884,74 @@ export default function Records() {
                     })}
                   </tbody>
                 </table>
+              </div>
+
+              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {categorySpecificCategories.map((category) => {
+                  const mpesaKey = getCategoryElectronicKey(category, "mpesa");
+                  const chequeKey = getCategoryElectronicKey(category, "cheque");
+                  const mpesa = Number(values[mpesaKey]) || 0;
+                  const cheque = Number(values[chequeKey]) || 0;
+                  const total = mpesa + cheque;
+
+                  return (
+                    <div key={category} className="p-4 border rounded bg-blue-50">
+                      <h3 className="font-semibold text-lg text-blue-900 mb-4">{category} - Electronic Giving</h3>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            M-Pesa Amount
+                          </label>
+                          <div className="flex gap-2 items-center">
+                            <input
+                              type="number"
+                              min="0"
+                              value={values[mpesaKey] ?? ""}
+                              onChange={(e) => handleCategoryElectronicChange(ledger.id, category, "mpesa", e.target.value)}
+                              readOnly={readOnly}
+                              disabled={readOnly}
+                              className="flex-1 border rounded p-2 text-right disabled:bg-gray-100 read-only:bg-gray-100"
+                              placeholder="0"
+                            />
+                            <span className="text-sm text-gray-600 min-w-24 text-right">
+                              {formatCurrency(mpesa)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Cheque Amount
+                          </label>
+                          <div className="flex gap-2 items-center">
+                            <input
+                              type="number"
+                              min="0"
+                              value={values[chequeKey] ?? ""}
+                              onChange={(e) => handleCategoryElectronicChange(ledger.id, category, "cheque", e.target.value)}
+                              readOnly={readOnly}
+                              disabled={readOnly}
+                              className="flex-1 border rounded p-2 text-right disabled:bg-gray-100 read-only:bg-gray-100"
+                              placeholder="0"
+                            />
+                            <span className="text-sm text-gray-600 min-w-24 text-right">
+                              {formatCurrency(cheque)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="pt-3 border-t-2 border-blue-200">
+                          <div className="flex justify-between items-center">
+                            <span className="font-semibold text-gray-800">Total</span>
+                            <span className="font-bold text-lg text-blue-900">
+                              {formatCurrency(total)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );

@@ -42,15 +42,34 @@ export const getFetchOptions = (opts = {}) => {
 };
 
 export const apiFetch = async (path, opts = {}) => {
+  console.log("apiFetch called");
+  console.log("API_BASE:", API_BASE);
+  console.log("Path:", path);
   const url = `${API_BASE}${path}`;
   const optsWithAuth = getFetchOptions(opts);
+
+  const timeoutMs = typeof optsWithAuth.timeout === 'number' ? optsWithAuth.timeout : 10000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  if (optsWithAuth.signal) {
+    optsWithAuth.signal.addEventListener('abort', () => controller.abort());
+  }
+
+  optsWithAuth.signal = controller.signal;
+  delete optsWithAuth.timeout;
 
   let res;
 
   try {
     res = await fetch(url, optsWithAuth);
-  } catch {
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error(`Request to ${url} timed out after ${timeoutMs}ms.`);
+    }
     throw new Error(`Could not reach the backend at ${API_BASE}. Make sure the backend server is running.`);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   const body = await res.json().catch(() => ({}));

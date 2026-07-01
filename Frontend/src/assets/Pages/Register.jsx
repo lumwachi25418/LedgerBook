@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { API_BASE } from '../../Utilities/api';
+import { apiFetch } from '../../Utilities/api';
 
 function Register({ onRegister }) {
   const [email, setEmail] = useState('');
@@ -11,6 +11,7 @@ function Register({ onRegister }) {
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
+    console.log("Register button clicked");
     e.preventDefault();
     setError('');
 
@@ -37,29 +38,19 @@ function Register({ onRegister }) {
     setLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE}/auth/register`, {
+      const payload = await apiFetch('/auth/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: normalizedEmail,
           organisation: normalizedOrganisation,
           password: normalizedPassword,
         }),
+        timeout: 10000,
       });
-
-      const payload = await response.json();
-
-      if (!response.ok) {
-        const message = payload?.error || 'Registration failed. Try again.';
-        setError(message);
-        setLoading(false);
-        return;
-      }
 
       const token = payload?.data?.token;
       if (!token) {
         setError('Registration completed but no token received.');
-        setLoading(false);
         return;
       }
 
@@ -67,10 +58,10 @@ function Register({ onRegister }) {
       localStorage.setItem('authToken', token);
       localStorage.setItem('authUser', JSON.stringify(userInfo));
       onRegister?.(userInfo);
-      setLoading(false);
       navigate('/');
     } catch (err) {
-      setError(`Network error while registering. Please try again. ${err?.message || ''}`.trim());
+      setError(err?.message || 'Registration failed. Please try again.');
+    } finally {
       setLoading(false);
     }
   };

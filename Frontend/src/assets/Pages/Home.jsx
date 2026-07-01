@@ -2,14 +2,13 @@ import { useState, useEffect } from "react";
 import { getLedgers, createLedger, createTransaction, updateTransaction, saveLedgerTransactions } from "../../Utilities/api";
 
 const denominations = [1000, 500, 200, 100, 50, 40, 20, 10, 5];
-const defaultCategories = ["English Service", "Kiswahili Service", "Youth Service", "Sunday School", "Teens"];
+const defaultCategories = ["English Service", "Kiswahili Service", "Youth Service", "Sunday School", "Teens", "Senior Citizen Service"];
 
 const typeOptions = [
   "offering",
   "tithes",
   "pillar",
   "Thanksgiving",
-  "Bearevement",
   "firstfruits"
 ];
 const typeLabels = {
@@ -17,7 +16,6 @@ const typeLabels = {
   tithes: "Tithe",
   pillar: "Pillar",
   Thanksgiving: "Thanksgiving",
-  Bearevement: "Bereavement",
   firstfruits: "Firstfruits",
 };
 
@@ -30,6 +28,7 @@ const normalizeCategory = (value = "") => {
   if (lower === "youth service") return "Youth Service";
   if (lower === "sunday school") return "Sunday School";
   if (lower === "teens") return "Teens";
+  if (lower === "senior citizen service") return "Senior Citizen Service";
 
   return trimmed;
 };
@@ -41,6 +40,9 @@ const formatKES = (n) =>
     currency: "KES",
     maximumFractionDigits: 0,
   }).format(n || 0);
+
+const isStandardGivingType = (type = "") => typeOptions.includes(String(type).trim());
+const isCustomGivingType = (type = "") => Boolean(String(type || "").trim()) && !isStandardGivingType(type);
 
 const selectLedgerForDate = (ledgers = [], date) => {
   const matches = ledgers.filter((ledger) => ledger.name === date);
@@ -238,18 +240,23 @@ export default function LedgerApp() {
     if (!cashEditable || isPastDate) return;
     const inputKey = `event_${eventIndex}`;
     const customType = newGivingTypeInput[inputKey]?.trim();
-    
+
     if (!customType) return;
 
     const updatedEvents = [...specialEvents];
     const customTypes = updatedEvents[eventIndex].customTypes || [];
-    
-    if (!customTypes.includes(customType)) {
+    const alreadyExists =
+      customTypes.some((type) => type.toLowerCase() === customType.toLowerCase()) ||
+      typeOptions.some((type) => type.toLowerCase() === customType.toLowerCase());
+
+    if (!alreadyExists) {
       updatedEvents[eventIndex] = {
         ...updatedEvents[eventIndex],
         customTypes: [...customTypes, customType],
       };
       setSpecialEventsByDate({ ...specialEventsByDate, [selectedDate]: updatedEvents });
+      setNewGivingTypeInput({ ...newGivingTypeInput, [inputKey]: "" });
+    } else {
       setNewGivingTypeInput({ ...newGivingTypeInput, [inputKey]: "" });
     }
   };
@@ -273,10 +280,9 @@ export default function LedgerApp() {
     if (!customType) return;
 
     const existingTypes = serviceGivingTypesByCategory[cat] || [];
-    const normalizedStandardTypes = typeOptions.map((type) => type.toLowerCase());
     const alreadyExists =
       existingTypes.some((type) => type.toLowerCase() === customType.toLowerCase()) ||
-      normalizedStandardTypes.includes(customType.toLowerCase());
+      typeOptions.some((type) => type.toLowerCase() === customType.toLowerCase());
 
     if (alreadyExists) {
       setNewGivingTypeInput({ ...newGivingTypeInput, [inputKey]: "" });
@@ -302,21 +308,46 @@ export default function LedgerApp() {
   const calculateRowTotal = (row) =>
     denominations.reduce((sum, d) => sum + ((row?.[d] || 0) * d), 0);
 
-  const calculateSpecialEventTotal = (event) =>
-    (event.rows || []).reduce((eventSum, row) => eventSum + calculateRowTotal(row), 0);
+  const calculateRowsTotal = (rows = []) =>
+    (rows || []).reduce((sum, row) => sum + calculateRowTotal(row), 0);
 
-  const calculateSpecialEventsSubtotal = () =>
-    specialEvents.reduce((sum, event) => sum + calculateSpecialEventTotal(event), 0);
+  const calculateRowsByType = (rows = [], customOnly = false) =>
+    (rows || []).reduce((sum, row) => {
+      const type = String(row?.type || "").trim();
+      const includeRow = customOnly ? isCustomGivingType(type) : !isCustomGivingType(type);
+      return includeRow ? sum + calculateRowTotal(row) : sum;
+    }, 0);
+
+  const calculateSpecialEventTotal = (event) => calculateRowsTotal(event.rows || []);
+  const calculateSpecialEventStandardTotal = (event) => calculateRowsByType(event.rows || [], false);
+  const calculateSpecialEventCustomTotal = (event) => calculateRowsByType(event.rows || [], true);
+
+  const calculateSpecialEventsSubtotal = (customOnly = false) =>
+    specialEvents.reduce((sum, event) => sum + calculateRowsByType(event.rows || [], customOnly), 0);
 
   const calculateCashTotal = (cat) =>
     (categoryData[cat]?.cash || []).reduce((sum, row) => sum + calculateRowTotal(row), 0);
 
+  const calculateCategoryNormalTotal = (cat) =>
+    (categoryData[cat]?.cash || []).reduce((sum, row) => {
+      const type = String(row?.type || "").trim();
+      return !isCustomGivingType(type) ? sum + calculateRowTotal(row) : sum;
+    }, 0);
+
+  const calculateCategoryCustomTotal = (cat) =>
+    (categoryData[cat]?.cash || []).reduce((sum, row) => {
+      const type = String(row?.type || "").trim();
+      return isCustomGivingType(type) ? sum + calculateRowTotal(row) : sum;
+    }, 0);
+
   const calculateCategoryTotal = (cat) => {
     // Home page only has cash - mpesa and cheque are filled in Records later
-    return calculateCashTotal(cat);
+    return calculateCategoryNormalTotal(cat) + calculateCategoryCustomTotal(cat);
   };
 
-  const specialEventsSubtotal = calculateSpecialEventsSubtotal();
+  const specialEventsStandardSubtotal = calculateSpecialEventsSubtotal(false);
+  const specialEventsCustomSubtotal = calculateSpecialEventsSubtotal(true);
+  const specialEventsSubtotal = specialEventsStandardSubtotal + specialEventsCustomSubtotal;
   const grandTotal = categories.reduce((sum, cat) => sum + calculateCategoryTotal(cat), 0) + specialEventsSubtotal;
 
   const buildTransactionPayloads = () => {
@@ -562,6 +593,9 @@ export default function LedgerApp() {
                                     <option key={type} value={type}>{typeLabels[type] || type}</option>
                                   ))}
                                 </optgroup>
+                                {!typeOptions.includes(row.type) && !((event.customTypes || []).includes(row.type)) && (
+                                  <option key={row.type} value={row.type}>{row.type}</option>
+                                )}
                                 {(event.customTypes && event.customTypes.length > 0) && (
                                   <optgroup label="Custom Types">
                                     {event.customTypes.map(customType => (
@@ -611,7 +645,9 @@ export default function LedgerApp() {
               ))}
 
               <div className="text-right font-bold text-lg text-indigo-900 bg-gradient-to-r from-indigo-100 to-blue-100 p-4 rounded-lg border-2 border-indigo-200">
-                Total from All Events: {formatKES(specialEventsSubtotal)}
+                <div>Normal Giving: {formatKES(specialEventsStandardSubtotal)}</div>
+                <div>Custom Giving: {formatKES(specialEventsCustomSubtotal)}</div>
+                <div>Total from All Events: {formatKES(specialEventsSubtotal)}</div>
               </div>
             </div>
           ) : (
@@ -713,6 +749,9 @@ export default function LedgerApp() {
 	                                <option key={type} value={type}>{typeLabels[type] || type}</option>
 	                              ))}
 	                            </optgroup>
+	                            {!typeOptions.includes(row.type) && !serviceCustomTypes.includes(row.type) && (
+	                              <option key={row.type} value={row.type}>{row.type}</option>
+	                            )}
 	                            {serviceCustomTypes.length > 0 && (
 	                              <optgroup label="Custom Types">
 	                                {serviceCustomTypes.map(customType => (
@@ -749,8 +788,10 @@ export default function LedgerApp() {
                   </tbody>
                 </table>
 
-                <div className="mt-2 font-bold text-right">
-                  Total: {formatKES(calculateCategoryTotal(cat))}
+                <div className="mt-2 font-bold text-right space-y-1">
+                  <div>Normal Giving: {formatKES(calculateCategoryNormalTotal(cat))}</div>
+                  <div>Custom Giving: {formatKES(calculateCategoryCustomTotal(cat))}</div>
+                  <div>Total: {formatKES(calculateCategoryTotal(cat))}</div>
                 </div>
               </div>
             );

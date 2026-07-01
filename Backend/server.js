@@ -18,6 +18,7 @@ const authenticate = require('./middleware/auth');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+const BCRYPT_SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS || 8);
 const isProduction = process.env.NODE_ENV === 'production';
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
@@ -111,8 +112,12 @@ app.post('/auth/register', async (req, res) => {
     const existing = await User.findOne({ where: { email } });
     if (existing) return res.status(409).json({ error: 'Email already in use' });
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const startHash = Date.now();
+    const passwordHash = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
+    const hashTime = Date.now() - startHash;
+    console.log(`Password hash completed in ${hashTime}ms with ${BCRYPT_SALT_ROUNDS} rounds`);
 
+    const startTx = Date.now();
     const { organization, user } = await sequelize.transaction(async (transaction) => {
       const [tenantOrganization] = await Organization.findOrCreate({
         where: { name: organisation },
@@ -127,6 +132,9 @@ app.post('/auth/register', async (req, res) => {
 
       return { organization: tenantOrganization, user: createdUser };
     });
+    const txTime = Date.now() - startTx;
+    console.log(`Registration transaction completed in ${txTime}ms`);
+
 
     const token = jwt.sign({ userId: user.id, organizationId: organization.id }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
@@ -417,6 +425,29 @@ app.post('/api/ledgers/:ledgerId/transactions/bulk', async (req, res) => {
     }, new Map()).values());
 
     const savedTransactions = await sequelize.transaction(async (dbTransaction) => {
+      const incomingKeys = new Set(
+        mergedTransactions.map((entry) => {
+          const normalizedCategory = entry.category || "";
+          const normalizedTransactionType = entry.transaction_type || "";
+          const normalizedEventType = entry.event_type || null;
+          return `${entry.payment_method}\u0000${normalizedCategory}\u0000${normalizedTransactionType}\u0000${normalizedEventType}`;
+        })
+      );
+
+      const existingTransactions = await Transaction.findAll({
+        where: { LedgerId: ledger.id },
+        transaction: dbTransaction,
+      });
+
+      const staleTransactions = existingTransactions.filter((transaction) => {
+        const key = `${transaction.payment_method}\u0000${transaction.category || ""}\u0000${transaction.transaction_type || ""}\u0000${transaction.event_type || null}`;
+        return transaction.payment_method && !incomingKeys.has(key);
+      });
+
+      for (const transaction of staleTransactions) {
+        await transaction.destroy({ transaction: dbTransaction });
+      }
+
       const saved = [];
 
       for (const entry of mergedTransactions) {
